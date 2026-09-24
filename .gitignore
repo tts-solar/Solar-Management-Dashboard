@@ -1,0 +1,26 @@
+# dependencies / build output
+node_modules/
+dist/
+
+# real customer data & design source stay local (repo is public)
+data/*
+!data/sample*.csv
+design/
+
+# harness session state + OS junk
+.sessions/
+desktop.ini
+Thumbs.db
+
+# AI harness / tooling files stay local (not part of the app)
+.agents/
+.claude/
+AGENTS.md
+CLAUDE.md
+CODING_FAILURE_PATTERNS.md
+INVARIANTS.md
+error_index.md
+docs/
+domain/
+knowledge/
+scripts/
