@@ -31,7 +31,7 @@ export const DEFAULT_SETTINGS: PlantSettings = {
 export const PEAK_TO_KWP = 0.8
 
 export type SettingsMap = Record<string, Partial<PlantSettings>>
-type KV = Pick<Storage, 'getItem' | 'setItem'>
+type KV = Pick<Storage, 'getItem' | 'setItem'> & { removeItem?: Storage['removeItem'] }
 
 const STORAGE_KEY = 'solar-dashboard:settings:v1'
 const NUMERIC = ['sunHours', 'performanceRatio', 'peakTestFactor', 'abnormalBelow', 'tariff', 'paybackPlanYears'] as const
@@ -78,6 +78,15 @@ export function saveSettings(map: SettingsMap, kv: KV | null = browserStorage())
     return kv !== null
   } catch {
     return false
+  }
+}
+
+/** Forget the stored settings for this scope (used by the "ล้างข้อมูล" button). */
+export function clearSettings(kv: KV | null = browserStorage()): void {
+  try {
+    kv?.removeItem?.(STORAGE_KEY)
+  } catch {
+    // ignore: nothing to forget if storage is blocked
   }
 }
 

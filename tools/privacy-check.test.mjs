@@ -137,6 +137,13 @@ describe('checkDemo (demo bundle)', () => {
     const problems = checkDemo(demoHtml + `<script>addEventListener('dragover',f)</script>`, prints)
     expect(problems).toEqual(['demo bundle contains offline-only code: "dragover"'])
   })
+  it('fails when the clear-data button leaks in (offline-only label)', () => {
+    expect(checkDemo(demoHtml + `<button>ล้างข้อมูล</button>`, prints)).toEqual([
+      'demo bundle contains offline-only code: "ล้างข้อมูล"',
+    ])
+    // the offline bundle is allowed to carry it
+    expect(checkOffline(offlineHtml + `<button>ล้างข้อมูล</button>`, prints)).toEqual([])
+  })
   it('fails when the samples are missing (detector or wrong file)', () => {
     const problems = checkDemo('<html></html>', prints)
     expect(problems[0]).toContain('missing sample data from data/sample-Z.csv')

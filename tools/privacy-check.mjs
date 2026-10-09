@@ -21,6 +21,7 @@ export const OFFLINE_ONLY_MARKERS = [
   'dragover',
   'windows-874',
   'นำเข้า CSV',
+  'ล้างข้อมูล',
   'เริ่มใช้งาน Solar Dashboard (Offline)',
 ]
 

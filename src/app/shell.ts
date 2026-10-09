@@ -6,6 +6,7 @@ export interface ShellHandlers {
   onFiles(files: File[]): void
   onSettings(): void
   onDownload(): void
+  onClear(): void
 }
 
 export interface Crumb {
@@ -40,6 +41,7 @@ const ICONS = {
   settings:
     'M19.4 13a7.5 7.5 0 000-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 00-1.7-1L15 3.5h-4l-.3 2.5a7.4 7.4 0 00-1.7 1l-2.4-1-2 3.4L6.6 11a7.5 7.5 0 000 2l-2 1.6 2 3.4 2.4-1c.5.4 1.1.7 1.7 1l.3 2.5h4l.3-2.5c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.4-2-1.6zM13 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7z',
   download: 'M10 3h4v7h3l-5 5-5-5h3V3zM5 17h14v3H5z',
+  clear: 'M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 11H7L6 9zm4 2v7m4-7v7',
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -100,6 +102,8 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
     // demo: fetches the blank offline app (no data) · offline: saves a snapshot with the loaded data
     button('download', IS_DEMO ? 'ดาวน์โหลดแอป Offline' : 'บันทึกไฟล์', h.onDownload),
   )
+  // offline only: wipe the data this browser auto-remembered (e.g. before handing the computer on)
+  if (!IS_DEMO) tools.append(button('clear', 'ล้างข้อมูล', h.onClear))
 
   // title gets the full width like the slides; breadcrumb + toolbar share the row below it
   const subRow = el('div', 'head-row')

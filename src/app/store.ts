@@ -86,11 +86,12 @@ export function upsertPlant(list: Plant[], plant: Plant): 'added' | 'replaced' {
   return 'added'
 }
 
-type KV = Pick<Storage, 'getItem' | 'setItem'>
+type KV = Pick<Storage, 'getItem' | 'setItem'> & { removeItem?: Storage['removeItem'] }
 
 /**
  * localStorage with every key suffixed. Each downloaded file keeps its own edits, so opening
- * an older file from the same folder is not overridden by a newer file's settings.
+ * an older file from the same folder is not overridden by a newer file's settings. A blank
+ * offline file scopes by its own path, so two local files never cross-see each other's data.
  */
 export function scopedStorage(suffix: string): KV | null {
   let ls: Storage | null
@@ -104,5 +105,52 @@ export function scopedStorage(suffix: string): KV | null {
   return {
     getItem: (k) => store.getItem(k + suffix),
     setItem: (k, v) => store.setItem(k + suffix, v),
+    removeItem: (k) => store.removeItem(k + suffix),
+  }
+}
+
+/** Where a blank offline file auto-remembers its imported plants (daily totals, never the raw CSV). */
+export const PLANTS_KEY = 'solar-dashboard:plants:v1'
+
+/** Validate a stored plants array; anything malformed → null so the app falls back to empty. */
+export function parsePlants(text: string | null | undefined): Plant[] | null {
+  if (!text) return null
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(raw)) return null
+  const plants: Plant[] = []
+  for (const p of raw) {
+    const plant = toPlant(p)
+    if (!plant) return null
+    plants.push(plant)
+  }
+  return plants
+}
+
+/** Read the auto-remembered plants for this file's scope ([] if none, malformed, or storage blocked). */
+export function loadPlants(kv: KV | null): Plant[] {
+  return parsePlants(kv?.getItem(PLANTS_KEY)) ?? []
+}
+
+/** Auto-remember the plants for this file's scope. Returns false if the browser cannot store them. */
+export function savePlants(plants: Plant[], kv: KV | null): boolean {
+  try {
+    kv?.setItem(PLANTS_KEY, JSON.stringify(plants))
+    return kv !== null
+  } catch {
+    return false // quota full or storage blocked (private mode, file:// policies)
+  }
+}
+
+/** Forget the auto-remembered plants for this file's scope (the "ล้างข้อมูล" button). */
+export function clearStored(kv: KV | null): void {
+  try {
+    kv?.removeItem?.(PLANTS_KEY)
+  } catch {
+    // ignore: nothing to forget if storage is blocked
   }
 }

@@ -9,12 +9,12 @@ import { TreemapController, TreemapElement } from 'chartjs-chart-treemap'
 import sampleCsv from '../data/sample-MH.csv?raw'
 import { parseCsv } from './data/csv'
 import { monthsOf, yearsOf } from './data/aggregate'
-import { loadSettings, saveSettings, settingsFor, type SettingsMap } from './data/settings'
+import { clearSettings, loadSettings, saveSettings, settingsFor, type SettingsMap } from './data/settings'
 import { demoPlants, DEMO_SETTINGS } from './data/demo'
 import type { Plant } from './data/types'
 import { go, onRoute, toHash, type Route } from './app/router'
 import { createShell, type Crumb } from './app/shell'
-import { readEmbedded, scopedStorage, upsertPlant } from './app/store'
+import { clearStored, loadPlants, readEmbedded, savePlants, scopedStorage, upsertPlant } from './app/store'
 import { capturePristine, downloadHtml } from './app/download'
 import { readPlantFiles } from './app/upload'
 import { openSettings } from './app/settingsPanel'
@@ -36,9 +36,18 @@ capturePristine(document)
 // drops the sample CSVs. A constant imported from another module is NOT folded and the samples leak in.
 const IS_DEMO = import.meta.env.MODE !== 'offline'
 const samplePlant = (): Plant => ({ id: 'MH', name: 'MH', daily: parseCsv(sampleCsv).daily, source: 'sample-MH.csv' })
-const plants: Plant[] = embedded ? embedded.plants : IS_DEMO ? [samplePlant(), ...demoPlants()] : []
-// each downloaded file saves its own edits (scoped by its download time)
-const storage = scopedStorage(embedded ? `:${embedded.id}` : '')
+// each file keeps its own data: a saved copy by its download time, a blank offline file by its own path
+// (so two blank files in one folder never cross-see). Demo stays on the shared empty scope.
+const storage = scopedStorage(embedded ? `:${embedded.id}` : IS_DEMO ? '' : `:${location.pathname}`)
+// offline blank file auto-remembers imported plants in this browser — no "บันทึกไฟล์" needed
+const remembered = embedded || IS_DEMO ? [] : loadPlants(storage)
+const plants: Plant[] = embedded
+  ? embedded.plants
+  : remembered.length
+    ? remembered
+    : IS_DEMO
+      ? [samplePlant(), ...demoPlants()]
+      : []
 const settings: SettingsMap = embedded
   ? { ...embedded.settings, ...loadSettings(storage) }
   : { ...(IS_DEMO ? DEMO_SETTINGS : {}), ...loadSettings(storage) }
@@ -58,7 +67,25 @@ const shell = createShell(document.getElementById('app')!, {
       shell.toast('สร้างไฟล์ดาวน์โหลดไม่สำเร็จ', 'error')
     }
   },
+  onClear: () => {
+    if (IS_DEMO || embedded) return
+    if (!confirm('ล้างข้อมูลที่จำไว้ในเบราว์เซอร์นี้ทั้งหมด? (ไฟล์ที่กด "บันทึกไฟล์" ไว้แล้วจะไม่ถูกลบ)')) return
+    clearStored(storage)
+    clearSettings(storage)
+    location.reload()
+  },
 })
+
+let saveWarned = false
+// auto-remember the imported plants in this browser (offline blank file only; a saved/embedded
+// file reloads its baked-in data, and the demo is sample-only)
+function rememberPlants(): void {
+  if (IS_DEMO || embedded) return
+  if (!savePlants(plants, storage) && !saveWarned) {
+    saveWarned = true
+    shell.toast('เบราว์เซอร์นี้จำข้อมูลอัตโนมัติไม่ได้ (พื้นที่เต็มหรือถูกปิด) — กด "บันทึกไฟล์" เพื่อเก็บข้อมูลแทน', 'error')
+  }
+}
 
 /** Demo only: hand out the blank offline app (no data inside) that deploy publishes beside index.html. */
 function downloadOfflineApp(): void {
@@ -78,6 +105,7 @@ async function importFiles(files: File[]): Promise<void> {
     const skip = skipped ? ` · ข้ามแถวที่อ่านไม่ได้ ${skipped} แถว` : ''
     shell.toast(`${how} Plant ${plant.id} แล้ว: ${days} วัน (${plant.daily[0].date} ถึง ${last(plant.daily)!.date})${skip}`)
   }
+  rememberPlants()
   const p = ok[ok.length - 1].plant
   const target: Route = ok.length === 1 ? { view: 'plant', plant: p.id, year: last(yearsOf(p.daily))! } : { view: 'overview' }
   if (toHash(target) === toHash(current)) render(current) // same URL → no hashchange, redraw by hand
@@ -101,6 +129,7 @@ function showSettings(): void {
     onRemove: (id) => {
       const i = plants.findIndex((p) => p.id === id)
       if (i >= 0) plants.splice(i, 1)
+      rememberPlants()
       shell.toast(`ลบ Plant ${id} ออกแล้ว`)
       if (current.view === 'plant' && current.plant === id) go({ view: 'overview' })
       else render(current)
