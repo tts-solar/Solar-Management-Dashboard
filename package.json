@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "vite --mode demo",
     "dev:offline": "vite --mode offline",
-    "build": "tsc --noEmit && npm run build:demo && npm run build:offline",
+    "build": "tsc --noEmit && npm run build:demo && npm run build:offline && npm run check:privacy",
     "build:demo": "vite build --mode demo",
     "build:offline": "vite build --mode offline",
+    "check:privacy": "node tools/privacy-check.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },

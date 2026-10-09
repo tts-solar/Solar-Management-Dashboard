@@ -6,6 +6,12 @@ dist/
 data/*
 !data/sample*.csv
 design/
+*.xls
+*.xlsx
+*.xlsm
+*.xlsb
+# dashboards saved from the offline app carry real data
+solar-dashboard-*.html
 
 # harness session state + OS junk
 .sessions/

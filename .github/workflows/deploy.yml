@@ -26,7 +26,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run build
+      # build ends with tools/privacy-check.mjs: fails (and nothing is published) if real data
+      # is tracked in git or the demo/offline bundles carry the wrong data
+      - name: Build demo + offline, then privacy check
+        run: npm run build
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from 'vitest/config'
 import { viteSingleFile } from 'vite-plugin-singlefile'
+import { checkBundledModules } from './tools/privacy-check.mjs'
 
 const OFFLINE_FILE = 'solar-dashboard-offline.html'
 
@@ -44,11 +45,63 @@ function offlineCsp(): Plugin {
   }
 }
 
+const STYLESHEET = /\.(css|scss|sass|less|styl|stylus|pcss|postcss|sss)$/i
+
+// CSS @import is inlined by PostCSS, which reads the file itself: it never becomes a module, so
+// bundledDataGuard cannot see it. Every CSS file that reaches the page passes through here, however it was pulled in.
+// Builds only (build.root is set by bundledDataGuard): the dev server publishes nothing.
+function cssSourceGuard(offline: boolean, build: { root: string }) {
+  return {
+    postcssPlugin: 'css-source-guard',
+    Once(css: { source?: { input: { file?: string } }; walk(cb: (node: { source?: { input: { file?: string } } }) => void): void }) {
+      if (!build.root) return
+      const files = new Set<string>()
+      if (css.source?.input.file) files.add(css.source.input.file)
+      css.walk((node) => {
+        if (node.source?.input.file) files.add(node.source.input.file)
+      })
+      const problems = checkBundledModules([...files], { root: build.root, offline, expectSamples: false })
+      if (problems.length) throw new Error(`privacy guard (T-008):\n  - ${problems.join('\n  - ')}`)
+    },
+  }
+}
+
+// The repo and the demo site are public: fail the build if anything outside the allowlist was bundled
+// (real CSVs, spreadsheets, exports…). Checks what Vite actually resolved, not how the import was written.
+function bundledDataGuard(offline: boolean, build: { root: string }): Plugin {
+  return {
+    name: 'bundled-data-guard',
+    apply: 'build',
+    configResolved(c) {
+      build.root = c.root
+    },
+    generateBundle(_options, bundle) {
+      // modules that put code into the output; getModuleIds() also lists ones tree-shaken away
+      // (the offline build loads the sample CSVs, then drops them)
+      const ids: string[] = []
+      for (const out of Object.values(bundle)) {
+        if (out.type !== 'chunk') continue
+        if (!out.modules) {
+          ids.push(...this.getModuleIds()) // no per-module info: check everything loaded (stricter)
+          break
+        }
+        for (const [id, m] of Object.entries(out.modules)) if (m.renderedLength > 0) ids.push(id)
+      }
+      // stylesheets add no JS (renderedLength 0) yet always land in the page: check every one loaded
+      ids.push(...[...this.getModuleIds()].filter((id) => STYLESHEET.test(id.split('?')[0])))
+      const problems = checkBundledModules(ids, { root: build.root, offline })
+      if (problems.length) this.error(`privacy guard (T-008):\n  - ${problems.join('\n  - ')}`)
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const offline = mode === 'offline'
+  const build = { root: '' } // set once a build starts
   return {
     base: './',
-    plugins: [viteSingleFile(), ...(offline ? [offlineCsp(), renameOfflineHtml()] : [])],
+    plugins: [viteSingleFile(), bundledDataGuard(offline, build), ...(offline ? [offlineCsp(), renameOfflineHtml()] : [])],
+    css: { postcss: { plugins: [cssSourceGuard(offline, build)] } },
     build: {
       target: 'es2020',
       assetsInlineLimit: 100000000,
