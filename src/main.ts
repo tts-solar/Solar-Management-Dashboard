@@ -21,6 +21,7 @@ import { openSettings } from './app/settingsPanel'
 import { MONTHS, destroyCharts } from './charts/common'
 import { renderOverview as overviewView, type ViewCtx } from './views/overview'
 import { renderPlant } from './views/plant'
+import { renderWelcome } from './views/welcome'
 
 Chart.register(...registerables, TreemapController, TreemapElement)
 Chart.defaults.font.family = "'Montserrat', 'Leelawadee UI', 'Noto Sans Thai', Tahoma, sans-serif"
@@ -52,7 +53,7 @@ const shell = createShell(document.getElementById('app')!, {
     if (!plants.length) return shell.toast('ยังไม่มี Plant ให้บันทึก — นำเข้าไฟล์ CSV ก่อน', 'error')
     try {
       const name = downloadHtml({ v: 1, id: new Date().toISOString(), plants, settings })
-      shell.toast(`ดาวน์โหลด ${name} แล้ว — เปิดไฟล์นี้ได้แม้ไม่มีอินเทอร์เน็ต`)
+      shell.toast(`บันทึก ${name} แล้ว — เปิดไฟล์นี้ครั้งหน้าจะเห็นข้อมูลเดิม (ไม่ต้องใช้อินเทอร์เน็ต)`)
     } catch {
       shell.toast('สร้างไฟล์ดาวน์โหลดไม่สำเร็จ', 'error')
     }
@@ -156,6 +157,13 @@ function renderOverview(requested?: string): void {
   const years = allYears()
   const year = requested && years.includes(requested) ? requested : years[years.length - 1]
   shell.setHeader('Overview', [{ label: 'Overview' }])
+  setFooter()
+  if (!year) {
+    shell.setPickers([]) // no blank year picker beside the empty state
+    // IS_DEMO is a literal here, so the demo bundle drops the welcome screen entirely
+    if (IS_DEMO) return placeholder('ยังไม่มีข้อมูล')
+    return renderWelcome(shell.view, shell.pickFiles)
+  }
   shell.setPickers([
     {
       label: 'ปี',
@@ -164,9 +172,7 @@ function renderOverview(requested?: string): void {
       onChange: (y) => go({ view: 'overview', year: y }),
     },
   ])
-  setFooter()
-  if (year) overviewView(shell.view, viewCtx, year)
-  else placeholder('ยังไม่มีข้อมูล — นำเข้าไฟล์ CSV ของ Plant ได้จากปุ่มด้านบน')
+  overviewView(shell.view, viewCtx, year)
 }
 
 function setFooter(plant?: Plant): void {

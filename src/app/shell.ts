@@ -31,6 +31,8 @@ export interface Shell {
   setPickers(pickers: Picker[]): void
   setFooter(text: string): void
   toast(message: string, kind?: 'info' | 'error'): void
+  /** Open the CSV file picker (offline build only; no-op in the demo). */
+  pickFiles(): void
 }
 
 const ICONS = {
@@ -78,6 +80,7 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   const tools = el('div', 'tools')
   const pickers = el('div', 'pickers')
   tools.append(pickers)
+  let pickFiles = (): void => {}
   if (!IS_DEMO) {
     const input = el('input')
     input.type = 'file'
@@ -89,12 +92,13 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
       input.value = '' // same file can be picked again
       if (files.length) h.onFiles(files)
     })
-    tools.append(button('upload', 'นำเข้า CSV', () => input.click()), input)
+    pickFiles = () => input.click()
+    tools.append(button('upload', 'นำเข้า CSV', pickFiles), input)
   }
   tools.append(
     button('settings', 'ตั้งค่า', h.onSettings),
     // demo: fetches the blank offline app (no data) · offline: saves a snapshot with the loaded data
-    button('download', IS_DEMO ? 'ดาวน์โหลดแอป Offline' : 'ดาวน์โหลด HTML', h.onDownload),
+    button('download', IS_DEMO ? 'ดาวน์โหลดแอป Offline' : 'บันทึกไฟล์', h.onDownload),
   )
 
   // title gets the full width like the slides; breadcrumb + toolbar share the row below it
@@ -181,5 +185,6 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
       footer.textContent = text
     },
     toast,
+    pickFiles: () => pickFiles(),
   }
 }
