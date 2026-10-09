@@ -70,63 +70,75 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   const crumbs = el('nav', 'crumbs')
   crumbs.setAttribute('aria-label', 'breadcrumb')
 
+  // demo build = sample-only showcase: no import UI (file input, upload button, drag-drop) at all.
+  // Keep this check inline on import.meta.env.MODE so the import branch is tree-shaken out of the demo
+  // bundle — a constant imported from another module is NOT folded (see IS_DEMO in main.ts).
+  const IS_DEMO = import.meta.env.MODE !== 'offline'
+
   const tools = el('div', 'tools')
   const pickers = el('div', 'pickers')
-  const input = el('input')
-  input.type = 'file'
-  input.accept = '.csv,text/csv'
-  input.multiple = true
-  input.hidden = true
-  input.addEventListener('change', () => {
-    const files = csvOnly(input.files)
-    input.value = '' // same file can be picked again
-    if (files.length) h.onFiles(files)
-  })
+  tools.append(pickers)
+  if (!IS_DEMO) {
+    const input = el('input')
+    input.type = 'file'
+    input.accept = '.csv,text/csv'
+    input.multiple = true
+    input.hidden = true
+    input.addEventListener('change', () => {
+      const files = csvOnly(input.files)
+      input.value = '' // same file can be picked again
+      if (files.length) h.onFiles(files)
+    })
+    tools.append(button('upload', 'นำเข้า CSV', () => input.click()), input)
+  }
   tools.append(
-    pickers,
-    button('upload', 'นำเข้า CSV', () => input.click()),
     button('settings', 'ตั้งค่า', h.onSettings),
-    button('download', 'ดาวน์โหลด HTML', h.onDownload),
-    input,
+    // demo: fetches the blank offline app (no data) · offline: saves a snapshot with the loaded data
+    button('download', IS_DEMO ? 'ดาวน์โหลดแอป Offline' : 'ดาวน์โหลด HTML', h.onDownload),
   )
 
   // title gets the full width like the slides; breadcrumb + toolbar share the row below it
   const subRow = el('div', 'head-row')
   subRow.append(crumbs, tools)
   header.append(title, subRow)
+  // permanent on every view: the header is built once and never replaced by routing
+  if (IS_DEMO) header.prepend(el('div', 'demo-banner', 'ข้อมูลตัวอย่าง (สังเคราะห์) — ไม่ใช่ข้อมูลจริง'))
 
   const view = el('main', 'view')
   const footer = el('footer', 'bar')
   const toastBox = el('div', 'toasts')
   toastBox.setAttribute('role', 'status')
-  const drop = el('div', 'drop-overlay', 'วางไฟล์ CSV ที่นี่')
-  root.append(header, view, footer, toastBox, drop)
+  root.append(header, view, footer, toastBox)
 
-  // drag a CSV anywhere on the page
-  let depth = 0
-  const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files')
-  window.addEventListener('dragenter', (e) => {
-    if (!hasFiles(e)) return
-    depth++
-    drop.classList.add('on')
-  })
-  window.addEventListener('dragleave', (e) => {
-    if (!hasFiles(e)) return
-    depth = Math.max(0, depth - 1)
-    if (!depth) drop.classList.remove('on')
-  })
-  window.addEventListener('dragover', (e) => {
-    if (hasFiles(e)) e.preventDefault()
-  })
-  window.addEventListener('drop', (e) => {
-    if (!hasFiles(e)) return
-    e.preventDefault()
-    depth = 0
-    drop.classList.remove('on')
-    const files = csvOnly(e.dataTransfer?.files)
-    if (files.length) h.onFiles(files)
-    else toast('รองรับเฉพาะไฟล์ .csv', 'error')
-  })
+  if (!IS_DEMO) {
+    // drag a CSV anywhere on the page
+    const drop = el('div', 'drop-overlay', 'วางไฟล์ CSV ที่นี่')
+    root.append(drop)
+    let depth = 0
+    const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files')
+    window.addEventListener('dragenter', (e) => {
+      if (!hasFiles(e)) return
+      depth++
+      drop.classList.add('on')
+    })
+    window.addEventListener('dragleave', (e) => {
+      if (!hasFiles(e)) return
+      depth = Math.max(0, depth - 1)
+      if (!depth) drop.classList.remove('on')
+    })
+    window.addEventListener('dragover', (e) => {
+      if (hasFiles(e)) e.preventDefault()
+    })
+    window.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      depth = 0
+      drop.classList.remove('on')
+      const files = csvOnly(e.dataTransfer?.files)
+      if (files.length) h.onFiles(files)
+      else toast('รองรับเฉพาะไฟล์ .csv', 'error')
+    })
+  }
 
   function toast(message: string, kind: 'info' | 'error' = 'info'): void {
     const t = el('div', `toast ${kind}`, message)

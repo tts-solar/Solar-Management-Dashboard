@@ -10,6 +10,7 @@ import sampleCsv from '../data/sample-MH.csv?raw'
 import { parseCsv } from './data/csv'
 import { monthsOf, yearsOf } from './data/aggregate'
 import { loadSettings, saveSettings, settingsFor, type SettingsMap } from './data/settings'
+import { demoPlants, DEMO_SETTINGS } from './data/demo'
 import type { Plant } from './data/types'
 import { go, onRoute, toHash, type Route } from './app/router'
 import { createShell, type Crumb } from './app/shell'
@@ -29,18 +30,25 @@ Chart.defaults.color = '#111'
 const embedded = readEmbedded(document)
 capturePristine(document)
 
-// the committed CSV is synthetic; real plant files are dropped in by the user
+// demo build = synthetic sample plants + preset settings; offline build starts empty (user imports real CSVs).
+// Keep this check inline on import.meta.env.MODE: Vite turns it into a literal here, so the offline bundle
+// drops the sample CSVs. A constant imported from another module is NOT folded and the samples leak in.
+const IS_DEMO = import.meta.env.MODE !== 'offline'
 const samplePlant = (): Plant => ({ id: 'MH', name: 'MH', daily: parseCsv(sampleCsv).daily, source: 'sample-MH.csv' })
-const plants: Plant[] = embedded ? embedded.plants : [samplePlant()]
+const plants: Plant[] = embedded ? embedded.plants : IS_DEMO ? [samplePlant(), ...demoPlants()] : []
 // each downloaded file saves its own edits (scoped by its download time)
 const storage = scopedStorage(embedded ? `:${embedded.id}` : '')
-const settings: SettingsMap = { ...embedded?.settings, ...loadSettings(storage) }
+const settings: SettingsMap = embedded
+  ? { ...embedded.settings, ...loadSettings(storage) }
+  : { ...(IS_DEMO ? DEMO_SETTINGS : {}), ...loadSettings(storage) }
 let current: Route = { view: 'overview' }
 
 const shell = createShell(document.getElementById('app')!, {
-  onFiles: (files) => void importFiles(files),
+  // demo has no import UI (shell drops it); a no-op here also lets importFiles/readPlantFiles be tree-shaken out
+  onFiles: IS_DEMO ? () => {} : (files) => void importFiles(files),
   onSettings: () => showSettings(),
   onDownload: () => {
+    if (IS_DEMO) return downloadOfflineApp()
     if (!plants.length) return shell.toast('ยังไม่มี Plant ให้บันทึก — นำเข้าไฟล์ CSV ก่อน', 'error')
     try {
       const name = downloadHtml({ v: 1, id: new Date().toISOString(), plants, settings })
@@ -50,6 +58,15 @@ const shell = createShell(document.getElementById('app')!, {
     }
   },
 })
+
+/** Demo only: hand out the blank offline app (no data inside) that deploy publishes beside index.html. */
+function downloadOfflineApp(): void {
+  const a = document.createElement('a')
+  a.href = 'solar-dashboard-offline.html'
+  a.download = 'solar-dashboard-offline.html'
+  a.click()
+  shell.toast('กำลังดาวน์โหลดแอป Offline (ไฟล์เปล่า ไม่มีข้อมูล) — เปิดไฟล์แล้วใส่ไฟล์ข้อมูลของคุณเองบนเครื่อง')
+}
 
 async function importFiles(files: File[]): Promise<void> {
   const { ok, errors } = await readPlantFiles(files)

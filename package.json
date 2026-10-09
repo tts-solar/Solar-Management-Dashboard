@@ -4,8 +4,11 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "dev": "vite --mode demo",
+    "dev:offline": "vite --mode offline",
+    "build": "tsc --noEmit && npm run build:demo && npm run build:offline",
+    "build:demo": "vite build --mode demo",
+    "build:offline": "vite build --mode offline",
     "preview": "vite preview",
     "test": "vitest run"
   },
