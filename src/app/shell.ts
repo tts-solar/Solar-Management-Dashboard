@@ -1,12 +1,10 @@
 import { toHash, type Route } from './router'
 
-/** App frame from the Canva design: tricolor title, toolbar, view area, sage footer bar. */
+/** App frame: left sidebar (brand + nav) beside a main column of header / view / footer. */
 
 export interface ShellHandlers {
+  /** A CSV drop/pick happened (offline build only; the demo passes a no-op). */
   onFiles(files: File[]): void
-  onSettings(): void
-  onDownload(): void
-  onClear(): void
 }
 
 export interface Crumb {
@@ -26,23 +24,31 @@ export interface Picker {
   onChange(value: string): void
 }
 
+/** Which sidebar item is highlighted. Settings is its own page; every data view is "dashboard". */
+export type NavKey = 'dashboard' | 'settings'
+
 export interface Shell {
   view: HTMLElement
   setHeader(context: string, crumbs: Crumb[]): void
   setPickers(pickers: Picker[]): void
   setFooter(text: string): void
+  setActive(nav: NavKey): void
   toast(message: string, kind?: 'info' | 'error'): void
   /** Open the CSV file picker (offline build only; no-op in the demo). */
   pickFiles(): void
 }
 
 const ICONS = {
-  upload: 'M12 3l5 5h-3v6h-4V8H7l5-5zM5 17h14v3H5z',
+  // sidebar nav glyphs
+  dashboard: 'M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z',
   settings:
     'M19.4 13a7.5 7.5 0 000-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 00-1.7-1L15 3.5h-4l-.3 2.5a7.4 7.4 0 00-1.7 1l-2.4-1-2 3.4L6.6 11a7.5 7.5 0 000 2l-2 1.6 2 3.4 2.4-1c.5.4 1.1.7 1.7 1l.3 2.5h4l.3-2.5c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.4-2-1.6zM13 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7z',
-  download: 'M10 3h4v7h3l-5 5-5-5h3V3zM5 17h14v3H5z',
-  clear: 'M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 11H7L6 9zm4 2v7m4-7v7',
 }
+
+// toast glyphs — stroke icons (the <svg> sets fill:none, stroke:currentColor)
+const TOAST_OK = '<path d="M20 6 9 17l-5-5"/>'
+const TOAST_ALERT =
+  '<path d="M12 9v4M12 17h.01M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag)
@@ -51,13 +57,13 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e
 }
 
-function button(icon: keyof typeof ICONS, label: string, onClick: () => void): HTMLButtonElement {
-  const b = el('button', 'tool')
-  b.type = 'button'
-  b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[icon]}"/></svg>`
-  b.append(el('span', '', label))
-  b.addEventListener('click', onClick)
-  return b
+/** A sidebar link: icon + label, highlighted when its route is active. */
+function navItem(icon: keyof typeof ICONS, label: string, route: Route): HTMLAnchorElement {
+  const a = el('a', 'nav-item')
+  a.href = toHash(route)
+  a.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[icon]}"/></svg>`
+  a.append(el('span', '', label))
+  return a
 }
 
 const csvOnly = (list: FileList | null | undefined): File[] =>
@@ -66,22 +72,49 @@ const csvOnly = (list: FileList | null | undefined): File[] =>
 export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   root.replaceChildren()
 
-  const header = el('header', 'top')
-  const title = el('h1', 'title')
-  const context = el('span', 't-ctx')
-  title.append(el('span', 't-solar', 'Solar'), ' ', el('span', 't-main', 'Management Dashboard'), ' ', context)
-
-  const crumbs = el('nav', 'crumbs')
-  crumbs.setAttribute('aria-label', 'breadcrumb')
-
-  // demo build = sample-only showcase: no import UI (file input, upload button, drag-drop) at all.
+  // demo build = sample-only showcase: no import UI (file input, drag-drop) at all.
   // Keep this check inline on import.meta.env.MODE so the import branch is tree-shaken out of the demo
   // bundle — a constant imported from another module is NOT folded (see IS_DEMO in main.ts).
   const IS_DEMO = import.meta.env.MODE !== 'offline'
 
-  const tools = el('div', 'tools')
+  // ── left sidebar: brand + nav (built once, permanent on every view) ──
+  const sidebar = el('aside', 'sidebar')
+  const brand = el('h1', 'brand')
+  brand.append(el('span', 'b-solar', 'Solar'), ' ', el('span', 'b-main', 'Management Dashboard'))
+  const nav = el('nav', 'side-nav')
+  nav.setAttribute('aria-label', 'หลัก')
+
+  const dashLink = navItem('dashboard', 'Dashboard', { view: 'overview' })
+  const setLink = navItem('settings', 'Settings', { view: 'settings' })
+  const navLinks: Record<NavKey, HTMLAnchorElement> = { dashboard: dashLink, settings: setLink }
+
+  const menuGroup = el('div', 'nav-group')
+  menuGroup.append(el('span', 'nav-label', 'MENU'), dashLink)
+  const generalGroup = el('div', 'nav-group')
+  generalGroup.append(el('span', 'nav-label', 'GENERAL'), setLink)
+  nav.append(menuGroup, generalGroup)
+  sidebar.append(brand, nav)
+
+  // ── main column: header / view / footer ──
+  const main = el('div', 'main-wrap')
+  const header = el('header', 'top')
+  const pageTitle = el('h2', 'page-title')
+  const crumbs = el('nav', 'crumbs')
+  crumbs.setAttribute('aria-label', 'breadcrumb')
   const pickers = el('div', 'pickers')
-  tools.append(pickers)
+  const headRow = el('div', 'head-row')
+  headRow.append(crumbs, pickers)
+  header.append(pageTitle, headRow)
+
+  const view = el('main', 'view')
+  const footer = el('footer', 'bar')
+  main.append(header, view, footer)
+
+  const toastBox = el('div', 'toasts')
+  toastBox.setAttribute('role', 'status')
+  root.append(sidebar, main, toastBox)
+
+  // hidden file input powers both the Settings-page "นำเข้า CSV" button and drag-drop (offline only)
   let pickFiles = (): void => {}
   if (!IS_DEMO) {
     const input = el('input')
@@ -95,30 +128,8 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
       if (files.length) h.onFiles(files)
     })
     pickFiles = () => input.click()
-    tools.append(button('upload', 'นำเข้า CSV', pickFiles), input)
-  }
-  tools.append(
-    button('settings', 'ตั้งค่า', h.onSettings),
-    // demo: fetches the blank offline app (no data) · offline: saves a snapshot with the loaded data
-    button('download', IS_DEMO ? 'ดาวน์โหลดแอป Offline' : 'บันทึกไฟล์', h.onDownload),
-  )
-  // offline only: wipe the data this browser auto-remembered (e.g. before handing the computer on)
-  if (!IS_DEMO) tools.append(button('clear', 'ล้างข้อมูล', h.onClear))
+    root.append(input)
 
-  // title gets the full width like the slides; breadcrumb + toolbar share the row below it
-  const subRow = el('div', 'head-row')
-  subRow.append(crumbs, tools)
-  header.append(title, subRow)
-  // permanent on every view: the header is built once and never replaced by routing
-  if (IS_DEMO) header.prepend(el('div', 'demo-banner', 'ข้อมูลตัวอย่าง (สังเคราะห์) — ไม่ใช่ข้อมูลจริง'))
-
-  const view = el('main', 'view')
-  const footer = el('footer', 'bar')
-  const toastBox = el('div', 'toasts')
-  toastBox.setAttribute('role', 'status')
-  root.append(header, view, footer, toastBox)
-
-  if (!IS_DEMO) {
     // drag a CSV anywhere on the page
     const drop = el('div', 'drop-overlay', 'วางไฟล์ CSV ที่นี่')
     root.append(drop)
@@ -149,7 +160,10 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   }
 
   function toast(message: string, kind: 'info' | 'error' = 'info'): void {
-    const t = el('div', `toast ${kind}`, message)
+    const t = el('div', `toast ${kind}`)
+    t.innerHTML = `<svg class="toast-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${kind === 'error' ? TOAST_ALERT : TOAST_OK}</svg>`
+    t.append(el('span', 'toast-msg', message))
+    t.addEventListener('click', () => t.remove()) // tap to dismiss early
     toastBox.append(t)
     setTimeout(() => t.remove(), kind === 'error' ? 8000 : 4000)
   }
@@ -157,7 +171,7 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   return {
     view,
     setHeader(ctx, list) {
-      context.textContent = ctx ? `(${ctx})` : ''
+      pageTitle.textContent = ctx
       document.title = ctx ? `Solar Management Dashboard · ${ctx}` : 'Solar Management Dashboard'
       crumbs.replaceChildren()
       list.forEach((c, i) => {
@@ -187,6 +201,9 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
     },
     setFooter(text) {
       footer.textContent = text
+    },
+    setActive(nav) {
+      for (const key of Object.keys(navLinks) as NavKey[]) navLinks[key].classList.toggle('on', key === nav)
     },
     toast,
     pickFiles: () => pickFiles(),

@@ -1,6 +1,7 @@
 import { resolve } from '../data/metrics'
 import { withDefaults, type PlantSettings, type SettingsMap } from '../data/settings'
 import type { Plant } from '../data/types'
+import { confirmDialog } from './confirm'
 
 /** Settings dialog: per-plant metadata and formula assumptions. A blank field = default / auto. */
 
@@ -136,9 +137,17 @@ export function openSettings(o: SettingsPanelOpts): void {
   }
   btn('ลบ Plant นี้', 'danger', () => {
     const plant = plantOf()
-    if (!confirm(`ลบ ${o.displayName(plant)} ออกจากหน้านี้?`)) return
-    finish()
-    o.onRemove(plant.id)
+    void (async () => {
+      const ok = await confirmDialog({
+        title: `ลบ ${o.displayName(plant)}?`,
+        message: 'ลบ Plant นี้ออกจากหน้านี้ (ไม่กระทบไฟล์ CSV ต้นฉบับของคุณ)',
+        confirmText: 'ลบ Plant',
+        danger: true,
+      })
+      if (!ok) return
+      finish()
+      o.onRemove(plant.id)
+    })()
   })
   btn('ล้างเป็นค่าเริ่มต้น', 'ghost', () => {
     for (const input of inputs.values()) input.value = ''

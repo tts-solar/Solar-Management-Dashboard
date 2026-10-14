@@ -18,10 +18,12 @@ import { clearStored, loadPlants, readEmbedded, savePlants, scopedStorage, upser
 import { capturePristine, downloadHtml } from './app/download'
 import { readPlantFiles } from './app/upload'
 import { openSettings } from './app/settingsPanel'
+import { confirmDialog } from './app/confirm'
 import { MONTHS, destroyCharts } from './charts/common'
 import { renderOverview as overviewView, type ViewCtx } from './views/overview'
 import { renderPlant } from './views/plant'
 import { renderWelcome } from './views/welcome'
+import { renderSettings } from './views/settings'
 
 Chart.register(...registerables, TreemapController, TreemapElement)
 Chart.defaults.font.family = "'Montserrat', 'Leelawadee UI', 'Noto Sans Thai', Tahoma, sans-serif"
@@ -56,25 +58,34 @@ let current: Route = { view: 'overview' }
 const shell = createShell(document.getElementById('app')!, {
   // demo has no import UI (shell drops it); a no-op here also lets importFiles/readPlantFiles be tree-shaken out
   onFiles: IS_DEMO ? () => {} : (files) => void importFiles(files),
-  onSettings: () => showSettings(),
-  onDownload: () => {
-    if (IS_DEMO) return downloadOfflineApp()
-    if (!plants.length) return shell.toast('ยังไม่มี Plant ให้บันทึก — นำเข้าไฟล์ CSV ก่อน', 'error')
-    try {
-      const name = downloadHtml({ v: 1, id: new Date().toISOString(), plants, settings })
-      shell.toast(`บันทึก ${name} แล้ว — เปิดไฟล์นี้ครั้งหน้าจะเห็นข้อมูลเดิม (ไม่ต้องใช้อินเทอร์เน็ต)`)
-    } catch {
-      shell.toast('สร้างไฟล์ดาวน์โหลดไม่สำเร็จ', 'error')
-    }
-  },
-  onClear: () => {
-    if (IS_DEMO || embedded) return
-    if (!confirm('ล้างข้อมูลที่จำไว้ในเบราว์เซอร์นี้ทั้งหมด? (ไฟล์ที่กด "บันทึกไฟล์" ไว้แล้วจะไม่ถูกลบ)')) return
-    clearStored(storage)
-    clearSettings(storage)
-    location.reload()
-  },
 })
+
+// offline: save a portable copy with the loaded data · demo: fetch the blank offline app
+function saveOrDownload(): void {
+  if (IS_DEMO) return downloadOfflineApp()
+  if (!plants.length) return shell.toast('ยังไม่มี Plant ให้บันทึก — นำเข้าไฟล์ CSV ก่อน', 'error')
+  try {
+    const name = downloadHtml({ v: 1, id: new Date().toISOString(), plants, settings })
+    shell.toast(`บันทึก ${name} แล้ว — เปิดไฟล์นี้ครั้งหน้าจะเห็นข้อมูลเดิม (ไม่ต้องใช้อินเทอร์เน็ต)`)
+  } catch {
+    shell.toast('สร้างไฟล์ดาวน์โหลดไม่สำเร็จ', 'error')
+  }
+}
+
+// offline: wipe the data this browser auto-remembered (e.g. before handing the computer on)
+async function clearData(): Promise<void> {
+  if (IS_DEMO || embedded) return
+  const ok = await confirmDialog({
+    title: 'ล้างข้อมูลที่จำไว้?',
+    message: 'ลบข้อมูลที่เบราว์เซอร์นี้จำไว้ทั้งหมด — ไฟล์ที่เคยกด "บันทึกไฟล์" ไว้แล้วจะไม่ถูกลบ',
+    confirmText: 'ล้างข้อมูล',
+    danger: true,
+  })
+  if (!ok) return
+  clearStored(storage)
+  clearSettings(storage)
+  location.reload()
+}
 
 let saveWarned = false
 // auto-remember the imported plants in this browser (offline blank file only; a saved/embedded
@@ -145,6 +156,8 @@ const allYears = (): string[] => [...new Set(plants.flatMap((p) => yearsOf(p.dai
 function render(route: Route): void {
   current = route
   destroyCharts()
+  shell.setActive(route.view === 'settings' ? 'settings' : 'dashboard')
+  if (route.view === 'settings') return renderSettingsPage()
   if (route.view === 'overview') return renderOverview(route.year)
   const plant = plants.find((p) => p.id === route.plant)
   const years = plant ? yearsOf(plant.daily) : []
@@ -203,6 +216,20 @@ function renderOverview(requested?: string): void {
     },
   ])
   overviewView(shell.view, viewCtx, year)
+}
+
+function renderSettingsPage(): void {
+  shell.setHeader('ตั้งค่า', [{ label: 'ตั้งค่า' }])
+  shell.setPickers([])
+  setFooter()
+  renderSettings(shell.view, {
+    isDemo: IS_DEMO,
+    hasPlants: plants.length > 0,
+    onImport: () => shell.pickFiles(),
+    onPlantSettings: () => showSettings(),
+    onDownload: () => saveOrDownload(),
+    onClear: () => void clearData(),
+  })
 }
 
 function setFooter(plant?: Plant): void {
