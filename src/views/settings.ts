@@ -47,7 +47,12 @@ export function renderSettings(view: HTMLElement, ctx: SettingsPageCtx): void {
 
   const cards = el('div', 'setting-cards')
 
-  if (!ctx.isDemo) {
+  // Gate the offline-only cards on import.meta.env.MODE (inline — NOT ctx.isDemo, a runtime value Vite can't
+  // fold) so the import/clear markup, incl. the "ล้างข้อมูล" marker, is tree-shaken out of the demo bundle.
+  // Same reason shell.ts keeps its check inline; privacy-check fails the build if a marker leaks (T-006/T-007).
+  const IS_DEMO = import.meta.env.MODE !== 'offline'
+
+  if (!IS_DEMO) {
     cards.append(
       card(
         'นำเข้าข้อมูล',
@@ -78,7 +83,7 @@ export function renderSettings(view: HTMLElement, ctx: SettingsPageCtx): void {
     ),
   )
 
-  if (!ctx.isDemo) {
+  if (!IS_DEMO) {
     cards.append(
       card(
         'ล้างข้อมูล',
