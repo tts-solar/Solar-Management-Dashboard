@@ -29,7 +29,7 @@ interface Zone {
 const ZONES: Zone[] = [
   { text: 'Plants ที่ควร Re-invest', bg: 'rgba(242,169,59,0.16)', pill: '#f7c948', ink: C.ink, left: true, top: true },
   { text: 'Plants ที่ทำงานผิดปกติ', bg: 'rgba(192,0,0,0.13)', pill: C.bad, ink: '#fff', left: true, top: false },
-  { text: 'Plants ตัวอย่างนำมาตรฐาน', bg: 'rgba(30,158,90,0.15)', pill: C.ok, ink: '#fff', left: false, top: true },
+  { text: 'Plants ตัวอย่างน่าทำมาตรฐาน', bg: 'rgba(30,158,90,0.15)', pill: C.ok, ink: '#fff', left: false, top: true },
   { text: 'Plants ทำงานปกติ', bg: 'rgba(0,0,0,0)', pill: '#fff', ink: C.ink, left: false, top: false },
 ]
 

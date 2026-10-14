@@ -160,7 +160,8 @@ function render(route: Route): void {
   crumbs.push(month ? { label: `${name} · ${route.year}`, route: yearRoute } : { label: `${name} · ${route.year}` })
   if (month) crumbs.push({ label: `${MONTHS[+month - 1]} ${route.year}` })
 
-  shell.setHeader(month ? `Plant ${name}, ${MONTHS[+month - 1]} ${route.year}` : `Plant ${name}, Y${route.year}`, crumbs)
+  const titleName = /^plant\b/i.test(name) ? name : `Plant ${name}`
+  shell.setHeader(month ? `${titleName}, ${MONTHS[+month - 1]} ${route.year}` : `${titleName}, Y${route.year}`, crumbs)
   shell.setPickers([
     {
       label: 'ปี',

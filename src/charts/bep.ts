@@ -24,9 +24,9 @@ export function bepChart(box: HTMLElement, years: BepYear[]): Chart<'line'> {
     data: {
       labels: years.map((y) => String(y.year)),
       datasets: [
-        series('Investment', years.map((y) => y.investment), C.blue, false),
-        series('Plan (Simulate)', years.map((y) => y.simulate), C.ink, false),
-        series('Savings', years.map((y) => y.savings), C.amber, true),
+        series('เงินลงทุน', years.map((y) => y.investment), C.blue, false),
+        series('Simulate', years.map((y) => y.simulate), C.ink, false),
+        series('ค่าไฟที่ประหยัด', years.map((y) => y.savings), C.amber, true),
       ],
     },
     options: {
