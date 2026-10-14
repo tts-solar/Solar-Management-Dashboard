@@ -98,6 +98,21 @@ describe('metrics', () => {
     expect(r.simulatePerDay).toBeCloseTo(90)
     expect(r.peakTestKwhPerDay).toBeCloseTo(81)
   })
+  it('ignores a lone spike when auto-estimating kWp', () => {
+    const normal = Array.from({ length: 5 }, (_, i) => day(`2026-01-0${i + 1}`, 100)) // peakKw 20 each
+    const spike = { ...day('2026-01-06', 100), peakKw: 7600 } // one corrupt interval, 380× the real peak
+    const r = resolve(plantOf([...normal, spike]), DEFAULT_SETTINGS)
+    expect(r.kWp).toBe(25) // from the real 20 kW peak, not the 7600 spike
+  })
+  it('trims a cluster of milder spikes with the 99th-percentile pass', () => {
+    // Mirrors the real H1 data: a tight cluster of clean daily peaks, plus residual corruption —
+    // two 200 kW misreads (4× the median, UNDER the gross-spike cap) and one 5000 kW giant.
+    // The gross cap drops the giant; the p99 pass trims the two milder spikes (top ~1% of ~300).
+    const mk = (peakKw: number): DailyRow => ({ ...day('2026-01-01', 100), peakKw })
+    const clean = Array.from({ length: 300 }, () => mk(50)) // real peak 50 kW → kWp 62.5
+    const r = resolve(plantOf([...clean, mk(200), mk(200), mk(5000)]), DEFAULT_SETTINGS)
+    expect(r.kWp).toBe(62.5) // the clean cluster, not the mild (200) or giant (5000) spikes
+  })
   it('computes efficiency, cover rate and abnormal days', () => {
     const [a, b] = plant.daily.map((d) => withMetrics(d, r))
     expect(a.efficiency).toBeCloseTo(100 / 90)

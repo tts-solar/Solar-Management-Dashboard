@@ -13,10 +13,47 @@ export interface Resolved extends PlantSettings {
   investmentAuto: boolean
 }
 
-export const maxPeakKw = (daily: DailyRow[]): number => daily.reduce((m, d) => Math.max(m, d.peakKw), 0)
+/** A daily peak kW above median × this is a gross corrupt reading, dropped before anything else. */
+const SPIKE_FACTOR = 10
+/** After gross spikes are gone, capacity is this percentile of the daily peaks — trims residual noise. */
+const PEAK_PERCENTILE = 0.99
+
+const median = (values: number[]): number => {
+  if (!values.length) return 0
+  const s = [...values].sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+/** Nearest-rank percentile (q in 0..1) of an unsorted list; [] → 0. */
+const percentile = (values: number[], q: number): number => {
+  if (!values.length) return 0
+  const s = [...values].sort((a, b) => a - b)
+  const i = Math.min(s.length - 1, Math.max(0, Math.ceil(q * s.length) - 1))
+  return s[i]
+}
+
+/**
+ * The plant's real peak kW, in two robust passes so neither a lone giant spike nor a cluster of
+ * milder corrupt readings inflates the capacity estimate:
+ *   1. drop any day above median × SPIKE_FACTOR — kills a gross spike even in a short series
+ *      (the median is unmoved by one outlier),
+ *   2. take the PEAK_PERCENTILE-th percentile of what survives — ignores the top ~1% as residual
+ *      noise. Real daily peaks sit within ~1.5× the median, so trimming the tail loses no capacity.
+ * At small n p99 ≈ max, so pass 1 does the rejecting; at large n pass 2 adds the fine trim.
+ */
+export const robustPeakKw = (daily: DailyRow[]): number => {
+  const peaks = daily.map((d) => d.peakKw).filter((v) => v > 0)
+  if (!peaks.length) return 0
+  const cap = median(peaks) * SPIKE_FACTOR
+  return percentile(
+    peaks.filter((v) => v <= cap),
+    PEAK_PERCENTILE,
+  )
+}
 
 export function resolve(plant: Plant, s: PlantSettings): Resolved {
-  const kWp = s.kWp ?? Math.round((maxPeakKw(plant.daily) / PEAK_TO_KWP) * 10) / 10
+  const kWp = s.kWp ?? Math.round((robustPeakKw(plant.daily) / PEAK_TO_KWP) * 10) / 10
   const simulatePerDay = kWp * s.sunHours * s.performanceRatio
   const investment =
     s.investment ?? Math.round((simulatePerDay * 365 * s.tariff * s.paybackPlanYears) / 1000) * 1000
