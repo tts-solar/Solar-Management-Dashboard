@@ -76,7 +76,8 @@ export function kpiCard(label: string, value: string, sub?: string, wide = false
 
 /**
  * Capsule/pill legend rendered as HTML below a chart (C: labels moved OUT of the plot so they
- * never cover the data). Each chip's color drives its border, text and dot via `currentColor`.
+ * never cover the data). D4: each chip is filled solid with its series color; the label flips to
+ * black or white for contrast against that fill.
  */
 export function chartLegend(items: { label: string; color: string }[]): HTMLElement {
   const wrap = document.createElement('div')
@@ -84,11 +85,20 @@ export function chartLegend(items: { label: string; color: string }[]): HTMLElem
   for (const it of items) {
     const chip = document.createElement('span')
     chip.className = 'chip'
-    chip.style.color = it.color
-    const dot = document.createElement('span')
-    dot.className = 'dot'
-    chip.append(dot, document.createTextNode(it.label))
+    chip.style.background = it.color
+    chip.style.borderColor = it.color
+    chip.style.color = labelOn(it.color)
+    chip.textContent = it.label
     wrap.append(chip)
   }
   return wrap
+}
+
+/** Pick a black or white label that stays readable on a solid `bg` fill (perceived-luminance test). */
+function labelOn(bg: string): string {
+  const h = bg.replace('#', '')
+  const hex = h.length === 3 ? h.replace(/./g, (c) => c + c) : h
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return '#ffffff'
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16))
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? '#1a1a1a' : '#ffffff'
 }

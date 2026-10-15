@@ -14,9 +14,10 @@ import { demoPlants, DEMO_SETTINGS } from './data/demo'
 import type { Plant } from './data/types'
 import { go, onRoute, toHash, type Route } from './app/router'
 import { createShell, type Crumb } from './app/shell'
-import { clearStored, loadPlants, openScopedStorage, readEmbedded, savePlants, scopedStorage, storageEstimate, upsertPlant } from './app/store'
-import { capturePristine, downloadHtml } from './app/download'
-import { readPlantFiles } from './app/upload'
+import { applyMerge, mergeInfo, clearStored, loadPlants, openScopedStorage, readEmbedded, savePlants, scopedStorage, storageEstimate } from './app/store'
+import { capturePristine, downloadHtml, downloadBlankOffline, blankOfflineAvailable } from './app/download'
+import { readPlantFiles, type Imported } from './app/upload'
+import { openImportDialog } from './app/importDialog'
 import { openSettings } from './app/settingsPanel'
 import { confirmDialog } from './app/confirm'
 import { MONTHS, destroyCharts } from './charts/common'
@@ -50,10 +51,12 @@ const settings: SettingsMap = {}
 let current: Route = { view: 'overview' }
 
 const shell = createShell(document.getElementById('app')!, {
-  onFiles: (files) => void importFiles(files),
+  onImport: (files) => openImport(files),
   onPlantSettings: () => showSettings(),
   onDownload: () => saveOrDownload(),
   onClear: () => void clearData(),
+  // Demo only, and only once the blank offline build is baked in (build:offline runs before build:demo).
+  onDownloadBlank: IS_DEMO && blankOfflineAvailable() ? () => handoutBlankOffline() : undefined,
 })
 
 // save a portable offline copy that carries the loaded data (both builds)
@@ -64,6 +67,17 @@ function saveOrDownload(): void {
     shell.toast(`บันทึก ${name} แล้ว — เปิดไฟล์นี้ครั้งหน้าจะเห็นข้อมูลเดิม (ไม่ต้องใช้อินเทอร์เน็ต)`)
   } catch {
     shell.toast('สร้างไฟล์ดาวน์โหลดไม่สำเร็จ', 'error')
+  }
+}
+
+// demo only: give the client a blank, network-locked offline copy of the app (no data, ever — not even
+// anything imported in this browser; the file is the build:offline artifact baked in at build time)
+function handoutBlankOffline(): void {
+  try {
+    const name = downloadBlankOffline()
+    shell.toast(`กำลังดาวน์โหลด ${name} — ไฟล์เปล่าสำหรับใช้งานออฟไลน์ (ยังไม่มีข้อมูลใดๆ)`)
+  } catch {
+    shell.toast('ดาวน์โหลดไฟล์เปล่าไม่สำเร็จ', 'error')
   }
 }
 
@@ -113,14 +127,29 @@ function rememberPlants(): void {
   void refreshMeter()
 }
 
-async function importFiles(files: File[]): Promise<void> {
-  const { ok, errors } = await readPlantFiles(files)
-  for (const e of errors) shell.toast(e, 'error')
-  if (!ok.length) return
-  for (const { plant, days, skipped } of ok) {
-    const how = upsertPlant(plants, plant) === 'replaced' ? 'แทนที่' : 'เพิ่ม'
+// open the centered preview+confirm dialog; `files` pre-fills it (drag-drop), else it opens empty.
+// The dialog parses + previews the data and only calls commitImport once the user confirms.
+function openImport(files?: File[]): void {
+  openImportDialog({
+    initialFiles: files,
+    read: readPlantFiles,
+    previewMerge: (plant) => mergeInfo(plants.find((p) => p.id === plant.id), plant),
+    onConfirm: (ok) => commitImport(ok),
+  })
+}
+
+// apply a confirmed import: merge each plant in, remember, and open the newly imported data
+function commitImport(ok: Imported[]): void {
+  for (const { plant, skipped } of ok) {
+    const info = applyMerge(plants, plant)
     const skip = skipped ? ` · ข้ามแถวที่อ่านไม่ได้ ${skipped} แถว` : ''
-    shell.toast(`${how} Plant ${plant.id} แล้ว: ${days} วัน (${plant.daily[0].date} ถึง ${last(plant.daily)!.date})${skip}`)
+    const how =
+      info.action === 'merged'
+        ? `รวมข้อมูล Plant ${plant.id}: เพิ่ม ${info.added} วันใหม่ (เดิม ${info.kept} วัน → รวม ${info.total} วัน)`
+        : info.action === 'replaced'
+          ? `แทนที่ Plant ${plant.id} แล้ว: ${info.total} วัน`
+          : `เพิ่ม Plant ${plant.id} แล้ว: ${info.total} วัน`
+    shell.toast(`${how} (${info.from} ถึง ${info.to})${skip}`)
   }
   rememberPlants()
   const p = ok[ok.length - 1].plant
@@ -209,7 +238,7 @@ function renderOverview(requested?: string): void {
   setFooter()
   if (!year) {
     shell.setPickers([]) // no blank year picker beside the empty state
-    return renderWelcome(shell.view, shell.pickFiles)
+    return renderWelcome(shell.view, shell.openImport)
   }
   shell.setPickers([
     {

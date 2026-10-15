@@ -123,6 +123,15 @@ body {
   background: rgba(255, 90, 90, 0.18);
   color: #fff;
 }
+/* demo build only: the "blank offline copy" action, set apart at the very bottom of the sidebar */
+.nav-group-bottom {
+  margin-top: auto;
+}
+/* when that bottom action is present it already pushes the cluster down — don't also auto-push the meter
+   (two margin-top:auto siblings would split the free space and strand the button in the middle) */
+.nav-group-bottom + .nav-meter {
+  margin-top: 0;
+}
 /* storage meter, pinned to the sidebar bottom (offline build only) */
 .nav-meter {
   margin-top: auto;
@@ -469,23 +478,16 @@ body {
   justify-content: center;
   gap: 8px;
 }
+/* D4: solid-filled pill — background + border set inline to the series color, label color flipped for contrast */
 .chart-legend .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   padding: 4px 12px;
   border: 1.5px solid currentColor;
   border-radius: 999px;
-  background: var(--paper);
   font-weight: 700;
   font-size: 0.78rem;
   line-height: 1;
-}
-.chart-legend .chip .dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: currentColor;
 }
 
 /* data table: green header like the slide, scrolls inside its panel */
@@ -506,6 +508,7 @@ table.data th {
   color: #fff;
   font-weight: 700;
   padding: 8px 6px;
+  text-align: center;
 }
 table.data td {
   padding: 6px;
@@ -513,7 +516,7 @@ table.data td {
   border-top: 1px solid var(--line);
 }
 table.data td.num {
-  text-align: right;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 table.data td.bad {
@@ -546,20 +549,26 @@ table.data tr.link:focus-visible {
   min-height: 38px;
 }
 
+/* dead-center of the viewport so a confirmation is impossible to miss (stacked, tap to dismiss) */
 .toasts {
   position: fixed;
-  right: 20px;
-  bottom: 60px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 10px;
   z-index: 40;
-  max-width: min(400px, calc(100vw - 32px));
+  width: max-content;
+  max-width: min(440px, calc(100vw - 32px));
+  pointer-events: none; /* never block the dashboard behind — only the toasts themselves are clickable */
 }
 .toast {
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  width: 100%;
   padding: 12px 16px;
   border-radius: 12px;
   border-left: 4px solid var(--ok);
@@ -569,7 +578,8 @@ table.data tr.link:focus-visible {
   font-size: 0.85rem;
   line-height: 1.4;
   cursor: pointer;
-  box-shadow: 0 10px 30px rgba(17, 24, 23, 0.16);
+  pointer-events: auto;
+  box-shadow: 0 12px 36px rgba(17, 24, 23, 0.22);
   animation: toast-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
 }
 .toast-ic {
@@ -1021,6 +1031,14 @@ dialog.confirm h2 {
   }
 }
 
+.c-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  filter: none;
+}
+
 @keyframes pop-in {
   from {
     opacity: 0;
@@ -1030,4 +1048,87 @@ dialog.confirm h2 {
     opacity: 1;
     transform: none;
   }
+}
+
+/* ── import dialog (centered preview + confirm before data enters the dashboard) ── */
+dialog.import-dlg {
+  width: min(560px, calc(100vw - 32px));
+  padding: 24px;
+  border: 0;
+  border-radius: 16px;
+  color: var(--ink);
+  font-family: var(--font);
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 24px 60px rgba(17, 24, 23, 0.32);
+}
+dialog.import-dlg[open] {
+  display: flex;
+  animation: pop-in 0.2s ease-out both;
+}
+dialog.import-dlg::backdrop {
+  background: rgba(17, 24, 23, 0.45);
+  backdrop-filter: blur(2px);
+}
+.imp-head h2 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+}
+.imp-sub {
+  margin: 0;
+  color: var(--gray);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.imp-pick {
+  align-self: flex-start;
+}
+.imp-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+}
+.imp-status {
+  margin: 0;
+  padding: 8px 2px;
+  color: var(--gray);
+  font-size: 0.9rem;
+}
+.imp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--green);
+  border-radius: 12px;
+  background: var(--paper);
+}
+.imp-plant {
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+.imp-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--gray);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.imp-change {
+  color: var(--green);
+  font-weight: 700;
+}
+.imp-skip {
+  color: var(--bad);
+}
+.imp-row.error {
+  display: block;
+  border-left-color: var(--bad);
+  color: var(--bad);
+  font-size: 0.85rem;
+  font-weight: 600;
 }

@@ -194,14 +194,14 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
     // D1: BEP card sub-line is English-only — "Plan N Years" (no Thai estimate/no-investment note).
     const bepValue = b.bepYears === null ? '–' : formatYM(b.bepYears)
     const bepSub = `Plan ${b.planYears} Years`
-    // D2: forecast card — faster = default (green); slower = red background (.slow);
-    // add a parenthesis sub-line with the gap vs plan in ปี/เดือน.
+    // D2: forecast card — fixed "คาดการณ์" header; the value leads with ช้า/เร็ว; faster = default (green),
+    // slower = red background (.slow); a parenthesis sub-line shows the gap vs plan in ปี/เดือน.
     const speed =
       b.fasterPct === null
-        ? kpiCard('เทียบแผน', '–')
+        ? kpiCard('คาดการณ์', '–')
         : kpiCard(
-            b.fasterPct >= 0 ? 'เร็วกว่าคาดการณ์' : 'ช้ากว่าคาดการณ์',
-            `${Math.abs(b.fasterPct).toFixed(2)}%`,
+            'คาดการณ์',
+            `${b.fasterPct >= 0 ? 'เร็ว' : 'ช้า'} ${Math.abs(b.fasterPct).toFixed(2)}%`,
             `(${formatYM(Math.abs(b.planYears - b.bepYears!))})`,
           )
     if (b.fasterPct !== null && b.fasterPct < 0) speed.classList.add('slow')

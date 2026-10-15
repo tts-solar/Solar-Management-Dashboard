@@ -2,6 +2,7 @@
 import { defineConfig, type Plugin } from 'vitest/config'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 import { checkBundledModules } from './tools/privacy-check.mjs'
+import { readOfflineHtmlB64 } from './tools/offline-embed.mjs'
 
 const OFFLINE_FILE = 'solar-dashboard-offline.html'
 
@@ -101,6 +102,9 @@ export default defineConfig(({ mode }) => {
   const build = { root: '' } // set once a build starts
   return {
     base: './',
+    // Demo build bakes in the blank offline build (base64) so the online app can hand it out as a download
+    // (downloadBlankOffline); the offline build IS that file, so it embeds nothing. '' when not built yet.
+    define: { __OFFLINE_HTML_B64__: JSON.stringify(readOfflineHtmlB64(offline)) },
     plugins: [viteSingleFile(), bundledDataGuard(offline, build), networkLockCsp(), ...(offline ? [renameOfflineHtml()] : [])],
     css: { postcss: { plugins: [cssSourceGuard(offline, build)] } },
     build: {
@@ -108,8 +112,8 @@ export default defineConfig(({ mode }) => {
       assetsInlineLimit: 100000000,
       cssCodeSplit: false,
       chunkSizeWarningLimit: 5000,
-      // demo build runs first and cleans dist/; offline build adds its file beside it
-      emptyOutDir: !offline,
+      // offline build runs first and cleans dist/; demo build adds index.html beside its file
+      emptyOutDir: offline,
     },
     test: {
       environment: 'node',

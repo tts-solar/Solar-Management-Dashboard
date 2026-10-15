@@ -1,5 +1,12 @@
 import { EMBED_ID, parseSnapshot, type Snapshot } from './store'
 
+// Baked in by Vite `define` (see vite.config.ts): the blank offline build's HTML, base64-encoded.
+// '' in the offline build and in dev before build:offline has run.
+declare const __OFFLINE_HTML_B64__: string
+
+/** File name the blank offline download is saved under (matches the offline build's own name in dist/). */
+const OFFLINE_FILE_NAME = 'solar-dashboard-offline.html'
+
 /**
  * "Download HTML": the app is one self-contained file, so the offline copy is the page's own
  * startup HTML plus the current data as a JSON <script>. The rendered DOM is never serialised.
@@ -42,18 +49,40 @@ const pad = (n: number) => String(n).padStart(2, '0')
 export const downloadName = (d = new Date()): string =>
   `solar-dashboard-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.html`
 
-/** Build the offline file and hand it to the browser as a download. Returns the file name. */
-export function downloadHtml(snap: Snapshot): string {
-  if (!pristine) throw new Error('capturePristine() was not called')
-  const html = injectSnapshot(pristine, snap)
-  if (!extractSnapshot(html)) throw new Error('embedded data failed to round-trip')
+/** Hand an HTML string to the browser as a download. Returns the file name. */
+function triggerDownload(html: string, name: string): string {
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
   const a = document.createElement('a')
   a.href = url
-  a.download = downloadName()
+  a.download = name
   document.body.append(a)
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
   return a.download
+}
+
+/** Build the offline file (carrying the loaded data) and hand it to the browser as a download. */
+export function downloadHtml(snap: Snapshot): string {
+  if (!pristine) throw new Error('capturePristine() was not called')
+  const html = injectSnapshot(pristine, snap)
+  if (!extractSnapshot(html)) throw new Error('embedded data failed to round-trip')
+  return triggerDownload(html, downloadName())
+}
+
+/** True when the blank offline build was baked into this (demo) bundle. */
+export function blankOfflineAvailable(): boolean {
+  return Boolean(__OFFLINE_HTML_B64__)
+}
+
+/**
+ * Demo build only: hand the client the blank, network-locked offline app — the real build:offline artifact,
+ * so it starts empty (no sample, and nothing imported here: that lives only in this browser, never in the
+ * baked-in string). Decoded UTF-8-safe because the HTML carries Thai text.
+ */
+export function downloadBlankOffline(): string {
+  if (!__OFFLINE_HTML_B64__) throw new Error('blank offline build is not bundled')
+  const bytes = Uint8Array.from(atob(__OFFLINE_HTML_B64__), (c) => c.charCodeAt(0))
+  const html = new TextDecoder().decode(bytes)
+  return triggerDownload(html, OFFLINE_FILE_NAME)
 }

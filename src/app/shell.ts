@@ -3,12 +3,14 @@ import { toHash, type Route } from './router'
 /** App frame: left sidebar (brand + nav) beside a main column of header / view / footer. */
 
 export interface ShellHandlers {
-  /** A CSV drop/pick happened (offline build only; the demo passes a no-op). */
-  onFiles(files: File[]): void
+  /** Open the centered import dialog; `files` pre-fills it (e.g. a drag-drop), else it opens empty. */
+  onImport(files?: File[]): void
   /** Open the per-plant settings dialog. */
   onPlantSettings(): void
-  /** Offline: save a portable copy with the loaded data · Demo: fetch the blank offline app. */
+  /** Save a portable copy of the loaded data (both builds). */
   onDownload(): void
+  /** Demo only: hand the client a blank copy of the offline app (absent in the offline build itself). */
+  onDownloadBlank?(): void
   /** Offline: wipe the data this browser auto-remembered. */
   onClear(): void
 }
@@ -42,8 +44,8 @@ export interface Shell {
   toast(message: string, kind?: 'info' | 'error'): void
   /** Update the sidebar storage meter (offline build only; no-op in the demo). */
   setStorage(used: number, quota: number): void
-  /** Open the CSV file picker (offline build only; no-op in the demo). */
-  pickFiles(): void
+  /** Open the centered import dialog (e.g. from the welcome screen's button). */
+  openImport(): void
 }
 
 /** Human-readable byte size for the storage meter (GB / MB / KB). */
@@ -60,6 +62,7 @@ const ICONS = {
     'M19.4 13a7.5 7.5 0 000-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 00-1.7-1L15 3.5h-4l-.3 2.5a7.4 7.4 0 00-1.7 1l-2.4-1-2 3.4L6.6 11a7.5 7.5 0 000 2l-2 1.6 2 3.4 2.4-1c.5.4 1.1.7 1.7 1l.3 2.5h4l.3-2.5c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.4-2-1.6zM13 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7z',
   upload: 'M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z',
   save: 'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
+  download: 'M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13z',
   trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
 }
 
@@ -100,10 +103,6 @@ const csvOnly = (list: FileList | null | undefined): File[] =>
 export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   root.replaceChildren()
 
-  // the CSV file picker is wired up below; declared up here so the "นำเข้าข้อมูล" sidebar item can
-  // close over it before it is assigned.
-  let pickFiles = (): void => {}
-
   // ── left sidebar: brand + nav (built once, permanent on every view) ──
   const sidebar = el('aside', 'sidebar')
   const brand = el('h1', 'brand')
@@ -121,13 +120,21 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   // network-lock (vite.config.ts) keeps imported data from ever leaving the page, online included.
   const generalGroup = el('div', 'nav-group')
   generalGroup.append(el('span', 'nav-label', 'GENERAL'))
-  generalGroup.append(actionItem('upload', 'นำเข้าข้อมูล', () => pickFiles()))
-  generalGroup.append(actionItem('settings', 'ตั้งค่า Plant', h.onPlantSettings))
-  generalGroup.append(actionItem('save', 'บันทึกไฟล์', h.onDownload))
-  generalGroup.append(actionItem('trash', 'ล้างข้อมูล', h.onClear, true))
+  generalGroup.append(actionItem('upload', 'Import Data', () => h.onImport()))
+  generalGroup.append(actionItem('settings', 'Plant Settings', h.onPlantSettings))
+  generalGroup.append(actionItem('save', 'Save File', h.onDownload))
+  generalGroup.append(actionItem('trash', 'Clear Data', h.onClear, true))
 
   nav.append(menuGroup, generalGroup)
   sidebar.append(brand, nav)
+
+  // Demo only: handing the client a blank offline copy is a different kind of action from the data tools
+  // above, so it sits on its own, pushed to the sidebar bottom (just above the storage meter).
+  if (h.onDownloadBlank) {
+    const bottomGroup = el('div', 'nav-group nav-group-bottom')
+    bottomGroup.append(actionItem('download', 'Blank Offline Copy', h.onDownloadBlank))
+    sidebar.append(bottomGroup)
+  }
 
   // storage meter at the sidebar bottom (both builds — imported/remembered data can fill up either).
   let meterFill: HTMLElement | null = null
@@ -161,22 +168,8 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   toastBox.setAttribute('role', 'status')
   root.append(sidebar, main, toastBox)
 
-  // hidden file input powers both the "นำเข้าข้อมูล" sidebar item and drag-drop
+  // drag a CSV anywhere on the page → open the import dialog pre-filled with the dropped files
   {
-    const input = el('input')
-    input.type = 'file'
-    input.accept = '.csv,text/csv'
-    input.multiple = true
-    input.hidden = true
-    input.addEventListener('change', () => {
-      const files = csvOnly(input.files)
-      input.value = '' // same file can be picked again
-      if (files.length) h.onFiles(files)
-    })
-    pickFiles = () => input.click()
-    root.append(input)
-
-    // drag a CSV anywhere on the page
     const drop = el('div', 'drop-overlay', 'วางไฟล์ CSV ที่นี่')
     root.append(drop)
     let depth = 0
@@ -200,7 +193,7 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
       depth = 0
       drop.classList.remove('on')
       const files = csvOnly(e.dataTransfer?.files)
-      if (files.length) h.onFiles(files)
+      if (files.length) h.onImport(files)
       else toast('รองรับเฉพาะไฟล์ .csv', 'error')
     })
   }
@@ -259,6 +252,6 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
       meterText.textContent = `ใช้พื้นที่ ${fmtBytes(used)} / ${fmtBytes(quota)}`
       meterText.parentElement?.classList.toggle('warn', pct >= 80)
     },
-    pickFiles: () => pickFiles(),
+    openImport: () => h.onImport(),
   }
 }
