@@ -139,7 +139,7 @@ describe('bep', () => {
     const res = bep(p, resolve(p, withDefaults({ kWp: 25 })))
     expect(res.bepYears).toBeCloseTo(7, 1)
     expect(Math.abs(res.fasterPct ?? 99)).toBeLessThan(1)
-    expect(res.years[0].year).toBe(2020)
+    expect(res.years[0].year).toBe(2026) // no startDate set → bep starts at the first year of real data
     expect(res.years.some((y) => y.projected)).toBe(true)
   })
   it('pays back faster when production beats plan', () => {
@@ -155,7 +155,7 @@ describe('settings', () => {
     const s = withDefaults({ tariff: -1, sunHours: NaN, startDate: '1/1/2020', kWp: 0, name: '  MH  ' } as Partial<PlantSettings>)
     expect(s.tariff).toBe(4.5)
     expect(s.sunHours).toBe(4.5)
-    expect(s.startDate).toBe('2020-10-01')
+    expect(s.startDate).toBeNull() // bad date dropped → null → resolve() uses the first day of real data
     expect(s.kWp).toBeNull()
     expect(s.name).toBe('MH')
   })

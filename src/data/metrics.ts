@@ -11,6 +11,8 @@ export interface Resolved extends PlantSettings {
   peakTestKwhPerDay: number
   investment: number
   investmentAuto: boolean
+  startDate: string
+  startDateAuto: boolean
 }
 
 /** A daily peak kW above median × this is a gross corrupt reading, dropped before anything else. */
@@ -57,6 +59,8 @@ export function resolve(plant: Plant, s: PlantSettings): Resolved {
   const simulatePerDay = kWp * s.sunHours * s.performanceRatio
   const investment =
     s.investment ?? Math.round((simulatePerDay * 365 * s.tariff * s.paybackPlanYears) / 1000) * 1000
+  // no commissioning date set → start from the first day of real data (plant.daily is sorted ascending)
+  const startDate = s.startDate ?? plant.daily[0]?.date ?? '2020-10-01'
   return {
     ...s,
     kWp,
@@ -65,6 +69,8 @@ export function resolve(plant: Plant, s: PlantSettings): Resolved {
     peakTestKwhPerDay: s.peakTestKwhPerDay ?? simulatePerDay * s.peakTestFactor,
     investment,
     investmentAuto: s.investment === null,
+    startDate,
+    startDateAuto: s.startDate === null,
   }
 }
 

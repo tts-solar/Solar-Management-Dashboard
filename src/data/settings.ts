@@ -8,7 +8,7 @@ export interface PlantSettings {
   peakTestFactor: number
   abnormalBelow: number // efficiency fraction under which a period is flagged
   tariff: number // THB per kWh saved
-  startDate: string // commissioning date YYYY-MM-DD
+  startDate: string | null // commissioning date YYYY-MM-DD; null → first day of real data (auto)
   investment: number | null // THB; null → sized so the plan pays back in paybackPlanYears
   paybackPlanYears: number
 }
@@ -22,7 +22,7 @@ export const DEFAULT_SETTINGS: PlantSettings = {
   peakTestFactor: 0.9,
   abnormalBelow: 0.7,
   tariff: 4.5,
-  startDate: '2020-10-01',
+  startDate: null,
   investment: null,
   paybackPlanYears: 7,
 }

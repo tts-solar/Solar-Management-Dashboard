@@ -57,6 +57,8 @@ function hint(f: Field, plant: Plant, raw: Partial<PlantSettings>): string {
       return `อัตโนมัติ ≈ ${round(r.peakTestKwhPerDay, 1)}`
     case 'investment':
       return `อัตโนมัติ ≈ ${Math.round(r.investment).toLocaleString('en-US')}`
+    case 'startDate':
+      return r.startDate // first day of real data when left blank
     default:
       return show(f, withDefaults({})[f.key])
   }
@@ -98,6 +100,7 @@ export function openSettings(o: SettingsPanelOpts): void {
   const grid = document.createElement('div')
   grid.className = 'fields'
   const inputs = new Map<Key, HTMLInputElement>()
+  const units = new Map<Key, HTMLElement>()
   for (const f of FIELDS) {
     const row = document.createElement('label')
     row.className = 'row'
@@ -108,6 +111,7 @@ export function openSettings(o: SettingsPanelOpts): void {
     inputs.set(f.key, input)
     const unit = document.createElement('small')
     unit.textContent = f.unit ?? ''
+    units.set(f.key, unit)
     row.append(Object.assign(document.createElement('span'), { textContent: f.label }), input, unit)
     grid.append(row)
   }
@@ -121,6 +125,10 @@ export function openSettings(o: SettingsPanelOpts): void {
       input.value = show(f, raw[f.key])
       input.placeholder = hint(f, plant, raw)
     }
+    // a <input type="date"> ignores placeholder, so surface the auto start date as grey helper text
+    const sdField = FIELDS.find((f) => f.key === 'startDate')!
+    const sdUnit = units.get('startDate')
+    if (sdUnit) sdUnit.textContent = raw.startDate ? '' : `อัตโนมัติ: ${hint(sdField, plant, raw)}`
   }
   pick.addEventListener('change', fill)
 
