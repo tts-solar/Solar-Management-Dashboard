@@ -1,4 +1,4 @@
-import { Chart, type ChartConfiguration, type ChartType, type Plugin } from 'chart.js'
+import { Chart, type ChartConfiguration, type ChartType } from 'chart.js'
 
 /** Palette shared with styles.css (Canva design). */
 export const C = {
@@ -56,49 +56,6 @@ export function destroyCharts(): void {
   live.clear()
 }
 
-/**
- * Rounded "pill" labels drawn on the line itself, like the Canva slides, instead of a legend.
- * Per dataset: `pill: { at: 0..1 (position along the x-axis), dy: px offset, text?, fill?, color? }`.
- */
-export interface PillSpec {
-  at: number
-  dy: number
-  text?: string
-  fill?: string
-  color?: string
-}
-export const pillLabels: Plugin = {
-  id: 'pillLabels',
-  afterDatasetsDraw(chart) {
-    const { ctx, chartArea } = chart
-    ctx.save()
-    ctx.font = `700 12px ${Chart.defaults.font.family}`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    chart.data.datasets.forEach((ds, i) => {
-      const spec = (ds as { pill?: PillSpec }).pill
-      const meta = chart.getDatasetMeta(i)
-      if (!spec || meta.hidden || !meta.data.length) return
-      const pt = meta.data[Math.round((meta.data.length - 1) * spec.at)]
-      const text = spec.text ?? String(ds.label ?? '')
-      const w = ctx.measureText(text).width + 28
-      const h = 24
-      const x = Math.min(Math.max(pt.x, chartArea.left + w / 2), chartArea.right - w / 2)
-      const y = Math.min(Math.max(pt.y + spec.dy, chartArea.top + h / 2), chartArea.bottom - h / 2)
-      ctx.beginPath()
-      ctx.roundRect(x - w / 2, y - h / 2, w, h, h / 2)
-      ctx.fillStyle = spec.fill ?? String(ds.borderColor ?? C.ink)
-      ctx.fill()
-      ctx.lineWidth = 1
-      ctx.strokeStyle = C.ink
-      ctx.stroke()
-      ctx.fillStyle = spec.color ?? '#fff'
-      ctx.fillText(text, x, y)
-    })
-    ctx.restore()
-  },
-}
-
 export const axisTitle = (text: string) => ({ display: true, text, font: { weight: 'bold' as const, size: 13 } })
 
 /** Green KPI card: white label, amber value, optional small line under it. */
@@ -115,4 +72,23 @@ export function kpiCard(label: string, value: string, sub?: string, wide = false
   add('value', value)
   if (sub) add('sub', sub)
   return card
+}
+
+/**
+ * Capsule/pill legend rendered as HTML below a chart (C: labels moved OUT of the plot so they
+ * never cover the data). Each chip's color drives its border, text and dot via `currentColor`.
+ */
+export function chartLegend(items: { label: string; color: string }[]): HTMLElement {
+  const wrap = document.createElement('div')
+  wrap.className = 'chart-legend'
+  for (const it of items) {
+    const chip = document.createElement('span')
+    chip.className = 'chip'
+    chip.style.color = it.color
+    const dot = document.createElement('span')
+    dot.className = 'dot'
+    chip.append(dot, document.createTextNode(it.label))
+    wrap.append(chip)
+  }
+  return wrap
 }

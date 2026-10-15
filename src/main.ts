@@ -14,7 +14,7 @@ import { demoPlants, DEMO_SETTINGS } from './data/demo'
 import type { Plant } from './data/types'
 import { go, onRoute, toHash, type Route } from './app/router'
 import { createShell, type Crumb } from './app/shell'
-import { clearStored, loadPlants, readEmbedded, savePlants, scopedStorage, upsertPlant } from './app/store'
+import { clearStored, loadPlants, openScopedStorage, readEmbedded, savePlants, scopedStorage, storageEstimate, upsertPlant } from './app/store'
 import { capturePristine, downloadHtml } from './app/download'
 import { readPlantFiles } from './app/upload'
 import { openSettings } from './app/settingsPanel'
@@ -23,7 +23,6 @@ import { MONTHS, destroyCharts } from './charts/common'
 import { renderOverview as overviewView, type ViewCtx } from './views/overview'
 import { renderPlant } from './views/plant'
 import { renderWelcome } from './views/welcome'
-import { renderSettings } from './views/settings'
 
 Chart.register(...registerables, TreemapController, TreemapElement)
 Chart.defaults.font.family = "'Montserrat', 'Leelawadee UI', 'Noto Sans Thai', Tahoma, sans-serif"
@@ -33,36 +32,32 @@ Chart.defaults.color = '#111'
 const embedded = readEmbedded(document)
 capturePristine(document)
 
-// demo build = synthetic sample plants + preset settings; offline build starts empty (user imports real CSVs).
-// Keep this check inline on import.meta.env.MODE: Vite turns it into a literal here, so the offline bundle
-// drops the sample CSVs. A constant imported from another module is NOT folded and the samples leak in.
+// IS_DEMO now governs ONE thing: the online build seeds synthetic sample plants + preset settings as a
+// first-load showcase; the offline build starts empty (user imports real CSVs). All data features
+// (import/save/persist/clear/meter) run in BOTH builds behind the CSP network-lock (vite.config.ts).
+// Inline on import.meta.env.MODE so Vite folds it to a literal and the offline bundle drops the samples.
 const IS_DEMO = import.meta.env.MODE !== 'offline'
 const samplePlant = (): Plant => ({ id: 'MH', name: 'MH', daily: parseCsv(sampleCsv).daily, source: 'sample-MH.csv' })
 // each file keeps its own data: a saved copy by its download time, a blank offline file by its own path
 // (so two blank files in one folder never cross-see). Demo stays on the shared empty scope.
-const storage = scopedStorage(embedded ? `:${embedded.id}` : IS_DEMO ? '' : `:${location.pathname}`)
-// offline blank file auto-remembers imported plants in this browser — no "บันทึกไฟล์" needed
-const remembered = embedded || IS_DEMO ? [] : loadPlants(storage)
-const plants: Plant[] = embedded
-  ? embedded.plants
-  : remembered.length
-    ? remembered
-    : IS_DEMO
-      ? [samplePlant(), ...demoPlants()]
-      : []
-const settings: SettingsMap = embedded
-  ? { ...embedded.settings, ...loadSettings(storage) }
-  : { ...(IS_DEMO ? DEMO_SETTINGS : {}), ...loadSettings(storage) }
+const SUFFIX = embedded ? `:${embedded.id}` : IS_DEMO ? '' : `:${location.pathname}`
+// Storage is loaded asynchronously in boot() (IndexedDB is async). plants/settings stay the SAME
+// arrays for the whole session — boot() fills them in place (push / assign), never reassigns — so
+// viewCtx and every closure below keep their references. They start empty until boot() runs.
+let storage: ReturnType<typeof scopedStorage> = null
+const plants: Plant[] = []
+const settings: SettingsMap = {}
 let current: Route = { view: 'overview' }
 
 const shell = createShell(document.getElementById('app')!, {
-  // demo has no import UI (shell drops it); a no-op here also lets importFiles/readPlantFiles be tree-shaken out
-  onFiles: IS_DEMO ? () => {} : (files) => void importFiles(files),
+  onFiles: (files) => void importFiles(files),
+  onPlantSettings: () => showSettings(),
+  onDownload: () => saveOrDownload(),
+  onClear: () => void clearData(),
 })
 
-// offline: save a portable copy with the loaded data · demo: fetch the blank offline app
+// save a portable offline copy that carries the loaded data (both builds)
 function saveOrDownload(): void {
-  if (IS_DEMO) return downloadOfflineApp()
   if (!plants.length) return shell.toast('ยังไม่มี Plant ให้บันทึก — นำเข้าไฟล์ CSV ก่อน', 'error')
   try {
     const name = downloadHtml({ v: 1, id: new Date().toISOString(), plants, settings })
@@ -72,9 +67,9 @@ function saveOrDownload(): void {
   }
 }
 
-// offline: wipe the data this browser auto-remembered (e.g. before handing the computer on)
+// wipe the data this browser auto-remembered (e.g. before handing the computer on)
 async function clearData(): Promise<void> {
-  if (IS_DEMO || embedded) return
+  if (embedded) return
   const ok = await confirmDialog({
     title: 'ล้างข้อมูลที่จำไว้?',
     message: 'ลบข้อมูลที่เบราว์เซอร์นี้จำไว้ทั้งหมด — ไฟล์ที่เคยกด "บันทึกไฟล์" ไว้แล้วจะไม่ถูกลบ',
@@ -84,27 +79,38 @@ async function clearData(): Promise<void> {
   if (!ok) return
   clearStored(storage)
   clearSettings(storage)
+  // also wipe any pre-migration copy still sitting in localStorage, so "ล้างข้อมูล" truly forgets
+  // everything (and the one-time migration can't resurrect it on the next open)
+  const ls = scopedStorage(SUFFIX)
+  clearStored(ls)
+  clearSettings(ls)
   location.reload()
+}
+
+let meterWarned = false
+// refresh the sidebar storage meter; warn once when the browser's quota is nearly full. The saved
+// HTML file is the durable copy — browser storage is only a cache, so near-full points there.
+async function refreshMeter(): Promise<void> {
+  if (embedded) return
+  const est = await storageEstimate()
+  if (!est) return
+  shell.setStorage(est.usage, est.quota)
+  if (est.quota > 0 && est.usage / est.quota >= 0.8 && !meterWarned) {
+    meterWarned = true
+    shell.toast('พื้นที่เก็บข้อมูลใกล้เต็ม — กด "บันทึกไฟล์" เพื่อเก็บข้อมูลเป็นไฟล์ถาวร (ไฟล์ที่บันทึกไว้จะไม่หาย)', 'error')
+  }
 }
 
 let saveWarned = false
 // auto-remember the imported plants in this browser (offline blank file only; a saved/embedded
 // file reloads its baked-in data, and the demo is sample-only)
 function rememberPlants(): void {
-  if (IS_DEMO || embedded) return
+  if (embedded) return
   if (!savePlants(plants, storage) && !saveWarned) {
     saveWarned = true
     shell.toast('เบราว์เซอร์นี้จำข้อมูลอัตโนมัติไม่ได้ (พื้นที่เต็มหรือถูกปิด) — กด "บันทึกไฟล์" เพื่อเก็บข้อมูลแทน', 'error')
   }
-}
-
-/** Demo only: hand out the blank offline app (no data inside) that deploy publishes beside index.html. */
-function downloadOfflineApp(): void {
-  const a = document.createElement('a')
-  a.href = 'solar-dashboard-offline.html'
-  a.download = 'solar-dashboard-offline.html'
-  a.click()
-  shell.toast('กำลังดาวน์โหลดแอป Offline (ไฟล์เปล่า ไม่มีข้อมูล) — เปิดไฟล์แล้วใส่ไฟล์ข้อมูลของคุณเองบนเครื่อง')
+  void refreshMeter()
 }
 
 async function importFiles(files: File[]): Promise<void> {
@@ -135,6 +141,7 @@ function showSettings(): void {
       settings[id] = values
       const saved = saveSettings(settings, storage)
       shell.toast(saved ? 'บันทึกการตั้งค่าแล้ว' : 'ใช้ค่าใหม่แล้ว แต่เบราว์เซอร์นี้บันทึกถาวรไม่ได้')
+      void refreshMeter()
       render(current)
     },
     onRemove: (id) => {
@@ -156,8 +163,7 @@ const allYears = (): string[] => [...new Set(plants.flatMap((p) => yearsOf(p.dai
 function render(route: Route): void {
   current = route
   destroyCharts()
-  shell.setActive(route.view === 'settings' ? 'settings' : 'dashboard')
-  if (route.view === 'settings') return renderSettingsPage()
+  shell.setActive('dashboard')
   if (route.view === 'overview') return renderOverview(route.year)
   const plant = plants.find((p) => p.id === route.plant)
   const years = plant ? yearsOf(plant.daily) : []
@@ -203,8 +209,6 @@ function renderOverview(requested?: string): void {
   setFooter()
   if (!year) {
     shell.setPickers([]) // no blank year picker beside the empty state
-    // IS_DEMO is a literal here, so the demo bundle drops the welcome screen entirely
-    if (IS_DEMO) return placeholder('ยังไม่มีข้อมูล')
     return renderWelcome(shell.view, shell.pickFiles)
   }
   shell.setPickers([
@@ -216,20 +220,6 @@ function renderOverview(requested?: string): void {
     },
   ])
   overviewView(shell.view, viewCtx, year)
-}
-
-function renderSettingsPage(): void {
-  shell.setHeader('ตั้งค่า', [{ label: 'ตั้งค่า' }])
-  shell.setPickers([])
-  setFooter()
-  renderSettings(shell.view, {
-    isDemo: IS_DEMO,
-    hasPlants: plants.length > 0,
-    onImport: () => shell.pickFiles(),
-    onPlantSettings: () => showSettings(),
-    onDownload: () => saveOrDownload(),
-    onClear: () => void clearData(),
-  })
 }
 
 function setFooter(plant?: Plant): void {
@@ -255,4 +245,26 @@ function placeholder(text: string, links: Crumb[] = []): void {
   shell.view.replaceChildren(box)
 }
 
-onRoute(render)
+// Storage (IndexedDB) loads asynchronously, then we fill the shared plants/settings arrays in
+// place and do the first render. Nothing can be clicked before the shell renders, so there is no
+// race: the UI only appears once boot() has loaded the data.
+async function boot(): Promise<void> {
+  storage = await openScopedStorage(SUFFIX)
+  const remembered = embedded ? [] : loadPlants(storage)
+  const initial: Plant[] = embedded
+    ? embedded.plants
+    : remembered.length
+      ? remembered
+      : IS_DEMO
+        ? [samplePlant(), ...demoPlants()]
+        : []
+  plants.push(...initial)
+  Object.assign(
+    settings,
+    embedded ? { ...embedded.settings, ...loadSettings(storage) } : { ...(IS_DEMO ? DEMO_SETTINGS : {}), ...loadSettings(storage) },
+  )
+  void refreshMeter()
+  onRoute(render)
+}
+
+void boot()

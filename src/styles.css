@@ -91,6 +91,13 @@ body {
   font-weight: 700;
   font-size: 0.9rem;
   text-decoration: none;
+  /* button variant reset: a <button class="nav-item"> must look identical to the <a> links */
+  width: 100%;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
 }
 .nav-item svg {
   width: 18px;
@@ -107,6 +114,48 @@ body {
 .nav-item.on {
   background: #fff;
   color: var(--green);
+}
+.nav-item.danger {
+  color: rgba(255, 185, 185, 0.95);
+}
+.nav-item.danger:hover,
+.nav-item.danger:focus-visible {
+  background: rgba(255, 90, 90, 0.18);
+  color: #fff;
+}
+/* storage meter, pinned to the sidebar bottom (offline build only) */
+.nav-meter {
+  margin-top: auto;
+  padding: 10px 10px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+.nav-meter-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+.nav-meter-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--amber);
+  transition: width 0.3s ease;
+}
+.nav-meter-text {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+.nav-meter.warn .nav-meter-bar > i {
+  background: #ff7a7a;
+}
+.nav-meter.warn .nav-meter-text {
+  color: #ffb9b9;
+  font-weight: 700;
 }
 
 .main-wrap {
@@ -402,6 +451,41 @@ body {
 }
 .bep-cards .value {
   font-size: clamp(1.3rem, 2vw, 1.9rem);
+}
+/* D2: forecast card turns red when behind plan */
+.kpi.slow {
+  background: var(--bad);
+}
+/* C: chart column = chart box + its HTML pill legend below (labels moved OUT of the plot) */
+.chart-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.chart-legend .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  background: var(--paper);
+  font-weight: 700;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+.chart-legend .chip .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: currentColor;
 }
 
 /* data table: green header like the slide, scrolls inside its panel */

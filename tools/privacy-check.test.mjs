@@ -5,7 +5,7 @@ import { checkBundledModules, checkDemo, checkDist, checkOffline, checkTracked, 
 const CSV = ['Date/Time,Energy Produced (Wh)', ...Array.from({ length: 8 }, (_, i) => `12/0${i + 1}/2025 12:00,${100 + i}`)].join('\r\n')
 const prints = [{ file: 'data/sample-Z.csv', lines: sampleFingerprints(CSV) }]
 const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; connect-src 'none'; form-action 'none'">`
-const demoHtml = `<html><script>var d=\`${CSV.replace(/\r/g, '')}\`</script></html>`
+const demoHtml = `<html><head>${CSP}</head><script>var d=\`${CSV.replace(/\r/g, '')}\`</script></html>`
 const offlineHtml = `<html><head>${CSP}</head><script>import CSV</script></html>`
 
 describe('sampleFingerprints', () => {
@@ -113,7 +113,7 @@ describe('checkDist (what gets published)', () => {
 })
 
 describe('checkDemo (demo bundle)', () => {
-  it('passes when samples are present and import code is absent', () => {
+  it('passes when samples and the network lock are present', () => {
     expect(checkDemo(demoHtml, prints)).toEqual([])
   })
   it('allows inlined fonts and images', () => {
@@ -133,16 +133,15 @@ describe('checkDemo (demo bundle)', () => {
   it('does not mistake minified code for an inlined file', () => {
     expect(checkDemo(demoHtml + '{data:t/e,label:n}', prints)).toEqual([])
   })
-  it('fails when import code leaks in', () => {
-    const problems = checkDemo(demoHtml + `<script>addEventListener('dragover',f)</script>`, prints)
-    expect(problems).toEqual(['demo bundle contains offline-only code: "dragover"'])
-  })
-  it('fails when the clear-data button leaks in (offline-only label)', () => {
-    expect(checkDemo(demoHtml + `<button>ล้างข้อมูล</button>`, prints)).toEqual([
-      'demo bundle contains offline-only code: "ล้างข้อมูล"',
-    ])
-    // the offline bundle is allowed to carry it
+  it('allows import code now — the online build ships it; the CSP lock is what keeps data in', () => {
+    expect(checkDemo(demoHtml + `<script>addEventListener('dragover',f)</script><button>ล้างข้อมูล</button>`, prints)).toEqual([])
+    // the offline bundle is allowed to carry it too
     expect(checkOffline(offlineHtml + `<button>ล้างข้อมูล</button>`, prints)).toEqual([])
+  })
+  it('fails when the CSP network lock is missing (online holds imported data, so the lock is required)', () => {
+    const problems = checkDemo(demoHtml.replace(CSP, ''), prints)
+    expect(problems).toHaveLength(3)
+    expect(problems.join(' ')).toContain("connect-src 'none'")
   })
   it('fails when the samples are missing (detector or wrong file)', () => {
     const problems = checkDemo('<html></html>', prints)

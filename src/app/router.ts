@@ -4,12 +4,10 @@
  *   #/overview/2026        → overview of one year
  *   #/plant/MH/2026        → one plant, one year
  *   #/plant/MH/2026/05     → one plant, one month
- *   #/settings             → settings page (import files + per-plant settings)
  */
 export type Route =
   | { view: 'overview'; year?: string }
   | { view: 'plant'; plant: string; year: string; month?: string }
-  | { view: 'settings' }
 
 const YEAR = /^\d{4}$/
 const MONTH = /^(0[1-9]|1[0-2])$/
@@ -22,12 +20,10 @@ export function parseHash(hash: string): Route {
     return route
   }
   if (parts[0] === 'overview' && YEAR.test(parts[1] ?? '')) return { view: 'overview', year: parts[1] }
-  if (parts[0] === 'settings') return { view: 'settings' }
   return { view: 'overview' }
 }
 
 export function toHash(route: Route): string {
-  if (route.view === 'settings') return '#/settings'
   if (route.view === 'overview') return route.year ? `#/overview/${route.year}` : '#/'
   const base = `#/plant/${encodeURIComponent(route.plant)}/${route.year}`
   return route.month ? `${base}/${route.month}` : base

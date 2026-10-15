@@ -20,10 +20,11 @@ function renameOfflineHtml(): Plugin {
   }
 }
 
-// The offline file holds homeowner data: forbid every network request so the data cannot leave
-// the machine even by a bug. Everything is inlined (JS/CSS, fonts as data:), so nothing else is needed.
-// Saved copies keep it too, since they are built from the page's own startup HTML.
-const OFFLINE_CSP = [
+// Both builds hold homeowner data (offline from a saved file, online from an import): forbid every
+// network request so the data cannot leave the browser even by a bug. Everything is inlined
+// (JS/CSS, fonts as data:), so nothing else is needed. Saved copies keep it too, since they are
+// built from the page's own startup HTML.
+const NETWORK_LOCK_CSP = [
   "default-src 'none'",
   "script-src 'unsafe-inline'",
   "style-src 'unsafe-inline'",
@@ -34,13 +35,13 @@ const OFFLINE_CSP = [
   "base-uri 'none'",
 ].join('; ')
 
-// build only: the dev server needs network for HMR
-function offlineCsp(): Plugin {
+// Applied to BOTH builds (offline + online). build only: the dev server needs network for HMR.
+function networkLockCsp(): Plugin {
   return {
-    name: 'offline-csp',
+    name: 'network-lock-csp',
     apply: 'build',
     transformIndexHtml: () => [
-      { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: OFFLINE_CSP }, injectTo: 'head-prepend' },
+      { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: NETWORK_LOCK_CSP }, injectTo: 'head-prepend' },
     ],
   }
 }
@@ -100,7 +101,7 @@ export default defineConfig(({ mode }) => {
   const build = { root: '' } // set once a build starts
   return {
     base: './',
-    plugins: [viteSingleFile(), bundledDataGuard(offline, build), ...(offline ? [offlineCsp(), renameOfflineHtml()] : [])],
+    plugins: [viteSingleFile(), bundledDataGuard(offline, build), networkLockCsp(), ...(offline ? [renameOfflineHtml()] : [])],
     css: { postcss: { plugins: [cssSourceGuard(offline, build)] } },
     build: {
       target: 'es2020',

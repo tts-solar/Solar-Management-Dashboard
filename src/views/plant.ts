@@ -3,8 +3,8 @@ import { inPeriod, sumRows, toMonthly } from '../data/aggregate'
 import { bep, formatYM, resolve, withMetrics, type BepYear, type MetricRow } from '../data/metrics'
 import { settingsFor } from '../data/settings'
 import type { Plant } from '../data/types'
-import { C, MONTHS, axisTitle, energy, energyScale, kpiCard, mountChart, pct, pillLabels, type PillSpec } from '../charts/common'
-import { bepChart } from '../charts/bep'
+import { C, MONTHS, axisTitle, chartLegend, energy, energyScale, kpiCard, mountChart, pct } from '../charts/common'
+import { bepChart, bepLegend } from '../charts/bep'
 import { scatterChart } from '../charts/scatter'
 import { dataTable } from './table'
 import type { ViewCtx } from './overview'
@@ -45,7 +45,7 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
     <div class="page">
       <section class="cell left">
         <h2 class="panel-title">Production Overview</h2>
-        <div class="chart-box" data-chart="line"></div>
+        <div class="chart-col"><div class="chart-box" data-chart="line"></div></div>
       </section>
       <section class="cell right"><div class="kpis" data-kpis></div></section>
       <div class="rule"></div>
@@ -53,7 +53,7 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
     <div class="page bottom">
       <section class="cell left">
         <h2 class="panel-title">Efficiency and Consumption</h2>
-        <div class="chart-box" data-chart="scatter"></div>
+        <div class="chart-col"><div class="chart-box" data-chart="scatter"></div></div>
       </section>
       <section class="cell right">
         <div class="tabs" role="tablist">
@@ -67,7 +67,7 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
 
   // ── Consumer / Simulate / Peak Test / Production per period ──
   const scale = energyScale(Math.max(...rows.flatMap((x) => [x.m.consumed, x.m.simulate, x.m.peakTest, x.m.produced])))
-  const series = (label: string, key: 'consumed' | 'simulate' | 'peakTest' | 'produced', color: string, pill: PillSpec) => ({
+  const series = (label: string, key: 'consumed' | 'simulate' | 'peakTest' | 'produced', color: string) => ({
     label,
     data: rows.map((x) => x.m[key] / scale.div),
     borderColor: color,
@@ -75,7 +75,6 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
     borderWidth: month ? 2 : 3,
     pointRadius: month ? 2.5 : 5,
     tension: 0.15,
-    pill,
   })
   const lineBox = box('line')
   lineBox.setAttribute('role', 'img')
@@ -85,11 +84,10 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
     data: {
       labels: rows.map((x) => x.axis),
       datasets: [
-        // pills at distinct x positions so they never stack (5 months → points 0,1,2,3)
-        series('Consumer', 'consumed', C.ink, { at: 0.1, dy: -24 }),
-        series('Simulate', 'simulate', C.blue, { at: 0.3, dy: -24 }),
-        series('Peak Test', 'peakTest', '#a6a6a6', { at: 0.85, dy: 22, fill: C.gray }),
-        series('Production', 'produced', C.amber, { at: 0.55, dy: -26, color: C.ink }),
+        series('Consumer', 'consumed', C.ink),
+        series('Simulate', 'simulate', C.blue),
+        series('Peak Test', 'peakTest', '#a6a6a6'),
+        series('Production', 'produced', C.amber),
       ],
     },
     options: {
@@ -118,8 +116,15 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
         if (drill && els.length) drill(rows[els[0].index].key)
       },
     },
-    plugins: [pillLabels],
   })
+  lineBox.after(
+    chartLegend([
+      { label: 'Consumer', color: C.ink },
+      { label: 'Simulate', color: C.blue },
+      { label: 'Peak Test', color: C.gray },
+      { label: 'Production', color: C.amber },
+    ]),
+  )
 
   // ── KPI cards ──
   el.querySelector('[data-kpis]')!.append(
@@ -129,12 +134,19 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
   )
 
   // ── efficiency vs consumption ──
+  const zoneText = month ? 'วันที่อาจทำงานผิดปกติ' : 'เดือนที่อาจทำงานผิดปกติ'
   scatterChart(
     box('scatter'),
     rows
       .filter((x) => x.m.efficiency !== null)
       .map((x) => ({ key: x.key, label: x.label, consumed: x.m.consumed, efficiency: x.m.efficiency!, abnormal: x.m.abnormal })),
-    { abnormalBelow: r.abnormalBelow, zoneText: month ? 'วันที่อาจทำงานผิดปกติ' : 'เดือนที่อาจทำงานผิดปกติ', onClick: drill },
+    { abnormalBelow: r.abnormalBelow, onClick: drill },
+  )
+  box('scatter').after(
+    chartLegend([
+      { label: zoneText, color: C.bad },
+      { label: 'ปกติ', color: '#4d4d4d' },
+    ]),
   )
 
   // ── tabs: BEP | Data table ──
@@ -166,6 +178,8 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
     const b = bep(plant, r)
     const wrap = document.createElement('div')
     wrap.className = 'bep'
+    const chartCol = document.createElement('div')
+    chartCol.className = 'chart-col'
     const chartBox = document.createElement('div')
     chartBox.className = 'chart-box'
     if (b.years.some((y) => y.projected)) {
@@ -174,19 +188,25 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
       note.textContent = 'เส้นประ = ประมาณการ'
       chartBox.append(note)
     }
+    chartCol.append(chartBox, bepLegend()) // D3: pill legend sits below the chart
     const cards = document.createElement('div')
     cards.className = 'kpis bep-cards'
-    const lastData = plant.daily[plant.daily.length - 1]?.date ?? ''
-    const estimate = b.bepDate !== null && b.bepDate > lastData ? ' · ประมาณการ' : ''
+    // D1: BEP card sub-line is English-only — "Plan N Years" (no Thai estimate/no-investment note).
     const bepValue = b.bepYears === null ? '–' : formatYM(b.bepYears)
-    const bepSub =
-      b.bepYears === null && r.investment <= 0 ? '(ยังไม่มีเงินลงทุน)' : `(Plan ${b.planYears} Years${estimate})`
+    const bepSub = `Plan ${b.planYears} Years`
+    // D2: forecast card — faster = default (green); slower = red background (.slow);
+    // add a parenthesis sub-line with the gap vs plan in ปี/เดือน.
     const speed =
       b.fasterPct === null
         ? kpiCard('เทียบแผน', '–')
-        : kpiCard(b.fasterPct >= 0 ? 'เร็วกว่าคาดการณ์' : 'ช้ากว่าคาดการณ์', `${Math.abs(b.fasterPct).toFixed(2)}%`)
+        : kpiCard(
+            b.fasterPct >= 0 ? 'เร็วกว่าคาดการณ์' : 'ช้ากว่าคาดการณ์',
+            `${Math.abs(b.fasterPct).toFixed(2)}%`,
+            `(${formatYM(Math.abs(b.planYears - b.bepYears!))})`,
+          )
+    if (b.fasterPct !== null && b.fasterPct < 0) speed.classList.add('slow')
     cards.append(kpiCard('Plant Age (Year)', formatYM(b.ageYears)), kpiCard('BEP (Year)', bepValue, bepSub), speed)
-    wrap.append(chartBox, cards)
+    wrap.append(chartCol, cards)
     return { node: wrap, chartBox, years: b.years }
   }
 

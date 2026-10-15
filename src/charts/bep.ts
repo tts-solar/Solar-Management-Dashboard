@@ -1,6 +1,13 @@
 import type { Chart } from 'chart.js'
 import type { BepYear } from '../data/metrics'
-import { C, axisTitle, baht, fmt0, mountChart } from './common'
+import { C, axisTitle, baht, chartLegend, fmt0, mountChart } from './common'
+
+/** Series shown on the BEP chart — single source for the datasets and the HTML pill legend (D3). */
+const META: { label: string; color: string; pick: (y: BepYear) => number; dash: boolean }[] = [
+  { label: 'เงินลงทุน', color: C.blue, pick: (y) => y.investment, dash: false },
+  { label: 'Simulate', color: C.ink, pick: (y) => y.simulate, dash: false },
+  { label: 'ค่าไฟที่ประหยัด', color: C.amber, pick: (y) => y.savings, dash: true },
+]
 
 /** Break-even chart: cumulative savings vs plan vs investment per year; estimated years are dashed. */
 export function bepChart(box: HTMLElement, years: BepYear[]): Chart<'line'> {
@@ -23,11 +30,7 @@ export function bepChart(box: HTMLElement, years: BepYear[]): Chart<'line'> {
     type: 'line',
     data: {
       labels: years.map((y) => String(y.year)),
-      datasets: [
-        series('เงินลงทุน', years.map((y) => y.investment), C.blue, false),
-        series('Simulate', years.map((y) => y.simulate), C.ink, false),
-        series('ค่าไฟที่ประหยัด', years.map((y) => y.savings), C.amber, true),
-      ],
+      datasets: META.map((m) => series(m.label, years.map(m.pick), m.color, m.dash)),
     },
     options: {
       maintainAspectRatio: false,
@@ -43,7 +46,7 @@ export function bepChart(box: HTMLElement, years: BepYear[]): Chart<'line'> {
         x: { grid: { display: false } },
       },
       plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 14, boxHeight: 3, font: { weight: 'bold', size: 11 } } },
+        legend: { display: false }, // D3: replaced by the HTML pill legend (bepLegend)
         tooltip: {
           callbacks: {
             label: (c) => {
@@ -55,4 +58,9 @@ export function bepChart(box: HTMLElement, years: BepYear[]): Chart<'line'> {
       },
     },
   })
+}
+
+/** D3: pill-shaped HTML legend for the BEP chart — one colored capsule chip per series. */
+export function bepLegend(): HTMLElement {
+  return chartLegend(META.map((m) => ({ label: m.label, color: m.color })))
 }

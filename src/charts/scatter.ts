@@ -13,7 +13,6 @@ export interface ScatterPoint {
 
 export interface ScatterOptions {
   abnormalBelow: number // fraction
-  zoneText: string
   onClick?(key: string): void
 }
 
@@ -48,27 +47,8 @@ function zonePlugin(o: ScatterOptions, avgEff: number, avgUse: number): Plugin<'
       ctx.stroke()
       ctx.restore()
     },
-    afterDatasetsDraw(chart) {
-      const { ctx, chartArea: a, scales } = chart
-      const zy = Math.min(Math.max(scales.y.getPixelForValue(o.abnormalBelow * 100), a.top), a.bottom)
-      const room = a.bottom - zy
-      if (room < 26) return
-      ctx.save()
-      ctx.font = `700 11px ${chart.options.font?.family ?? 'sans-serif'}`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      const w = Math.min(ctx.measureText(o.zoneText).width + 24, a.right - a.left - 8)
-      const h = 22
-      const cx = a.left + (a.right - a.left) / 2
-      const cy = zy + room * 0.6
-      ctx.beginPath()
-      ctx.roundRect(cx - w / 2, cy - h / 2, w, h, h / 2)
-      ctx.fillStyle = C.bad
-      ctx.fill()
-      ctx.fillStyle = '#fff'
-      ctx.fillText(o.zoneText, cx, cy, w - 10)
-      ctx.restore()
-    },
+    // C2: the abnormal-zone text label moved OUT of the plot — it is now an HTML chip below the
+    // chart (see renderPlant), so nothing is drawn over the data points here.
   }
 }
 

@@ -15,16 +15,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const SAMPLE_CSV = /^data\/sample-[^/]+\.csv$/
 const SPREADSHEET = /\.(xls|xlsx|xlsm|xlsb)$/i
 
-/** Strings only the offline (import-capable) build may contain — see T-006/T-007. */
-export const OFFLINE_ONLY_MARKERS = [
-  '.csv,text/csv',
-  'dragover',
-  'windows-874',
-  'นำเข้า CSV',
-  'ล้างข้อมูล',
-  'เริ่มใช้งาน Solar Dashboard (Offline)',
-]
-
 /** (d) git must track no real data: only data/sample-*.csv, no spreadsheets, no saved dashboards. */
 export function checkTracked(paths) {
   const problems = []
@@ -98,20 +88,45 @@ export function sampleFingerprints(csvText) {
 const foundIn = (html, lines) => lines.some((l) => html.includes(l))
 const unprintable = (prints) => prints.filter((p) => p.lines.length === 0).map((p) => `${p.file} has no data rows to fingerprint`)
 
-/** (c) demo bundle: no offline-only code; and it MUST carry the samples, else this detector is broken. */
+/**
+ * (c) online/demo bundle: it MUST carry the samples (showcase — else the detector is broken) AND the CSP
+ * network-lock. The online build now ships the import UI, so the lock — not the absence of import code — is
+ * what keeps imported real data from ever leaving the page.
+ */
 export function checkDemo(html, prints) {
   const problems = [...unprintable(prints), ...inlinedFiles(html, 'demo')]
-  for (const m of OFFLINE_ONLY_MARKERS) if (html.includes(m)) problems.push(`demo bundle contains offline-only code: "${m}"`)
   for (const { file, lines } of prints) {
     if (lines.length && !lines.every((l) => html.includes(l)))
       problems.push(`demo bundle is missing sample data from ${file} — wrong file, or the sample detector is broken`)
   }
-  return problems
+  return [...problems, ...checkNetworkLock(html, 'demo')]
 }
 
 const LOCAL_SOURCES = new Set(["'none'", "'unsafe-inline'", 'data:', 'blob:'])
 // exact name: a "…-Report-Only" policy only reports, it blocks nothing
 const CSP_META = /<meta\b[^>]*http-equiv\s*=\s*["']?Content-Security-Policy(?=["'\s>])[^>]*>/i
+
+/**
+ * The CSP network-lock BOTH builds must carry: default-src/connect-src/form-action 'none', and no directive
+ * may name a network source. This is what lets the online build hold imported real data — the lock closes
+ * every egress channel, so data cannot leave the page even via a bug, a dependency, or injected script.
+ */
+export function checkNetworkLock(html, label) {
+  const problems = []
+  const policy = cspDirectives(html)
+  // form-action is not covered by default-src, so a form could still post data out without it
+  for (const name of ['default-src', 'connect-src', 'form-action']) {
+    // 'none' only counts alone: browsers ignore it when any other source is listed
+    if (policy.get(name) !== "'none'") problems.push(`${label} bundle is missing the network lock (CSP ${name} 'none')`)
+  }
+  // no directive may name anything on the network (img/script/font/report-uri… could carry data out)
+  for (const [name, value] of policy) {
+    for (const src of value.split(/\s+/).filter(Boolean)) {
+      if (!LOCAL_SOURCES.has(src.toLowerCase())) problems.push(`${label} CSP ${name} allows a network source: ${src}`)
+    }
+  }
+  return problems
+}
 
 /** (b) offline bundle: zero sample data, and the CSP network lock is present. */
 export function checkOffline(html, prints) {
@@ -119,19 +134,7 @@ export function checkOffline(html, prints) {
   for (const { file, lines } of prints) {
     if (foundIn(html, lines)) problems.push(`offline bundle contains sample data from ${file}`)
   }
-  const policy = cspDirectives(html)
-  // form-action is not covered by default-src, so a form could still post data out without it
-  for (const name of ['default-src', 'connect-src', 'form-action']) {
-    // 'none' only counts alone: browsers ignore it when any other source is listed
-    if (policy.get(name) !== "'none'") problems.push(`offline bundle is missing the network lock (CSP ${name} 'none')`)
-  }
-  // no directive may name anything on the network (img/script/font/report-uri… could carry data out)
-  for (const [name, value] of policy) {
-    for (const src of value.split(/\s+/).filter(Boolean)) {
-      if (!LOCAL_SOURCES.has(src.toLowerCase())) problems.push(`offline CSP ${name} allows a network source: ${src}`)
-    }
-  }
-  return problems
+  return [...problems, ...checkNetworkLock(html, 'offline')]
 }
 
 /** Directives of the first live CSP meta in <head> (browsers ignore it elsewhere; comments skipped; &#39; decoded). */
@@ -182,7 +185,7 @@ export function main(argv = process.argv.slice(2)) {
   const offline = readBundle(root, offlinePath, 'offline')
   const results = [
     ['git tracks no real data', checkTracked(tracked)],
-    [`demo bundle (${demoPath}) has samples, no import code`, demo.html === null ? demo.problems : checkDemo(demo.html, prints)],
+    [`demo bundle (${demoPath}) has samples + network lock`, demo.html === null ? demo.problems : checkDemo(demo.html, prints)],
     [`offline bundle (${offlinePath}) has no samples, network locked`, offline.html === null ? offline.problems : checkOffline(offline.html, prints)],
     ['dist/ holds only the two HTML files', checkDist(distFiles)],
   ]

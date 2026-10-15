@@ -3,7 +3,7 @@ import { ageYears, cumulative, resolve, withMetrics, type MetricRow, type Resolv
 import { settingsFor, type SettingsMap } from '../data/settings'
 import type { Plant } from '../data/types'
 import type { Route } from '../app/router'
-import { C, MONTHS, axisTitle, energy, energyScale, kpiCard, mountChart, pct, pillLabels, type PillSpec } from '../charts/common'
+import { C, MONTHS, axisTitle, chartLegend, energy, energyScale, kpiCard, mountChart, pct } from '../charts/common'
 import { bubbleChart } from '../charts/bubble'
 import { treemapChart } from '../charts/treemap'
 
@@ -41,7 +41,7 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
     <div class="page">
       <section class="cell left">
         <h2 class="panel-title">Production Overview</h2>
-        <div class="chart-box" data-chart="line"></div>
+        <div class="chart-col"><div class="chart-box" data-chart="line"></div></div>
       </section>
       <section class="cell right"><div class="kpis" data-kpis></div></section>
       <div class="rule"></div>
@@ -77,7 +77,7 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
     produced: cumulative(perMonth.map((v) => v.produced)),
   }
   const scale = energyScale(Math.max(...cum.consumed, ...cum.simulate, ...cum.produced))
-  const series = (label: string, values: number[], color: string, pill: PillSpec) => ({
+  const series = (label: string, values: number[], color: string) => ({
     label,
     data: values.map((v) => v / scale.div),
     borderColor: color,
@@ -85,7 +85,6 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
     borderWidth: 3,
     pointRadius: 5,
     tension: 0.25,
-    pill,
   })
   const lineBox = box('line')
   lineBox.setAttribute('role', 'img')
@@ -95,9 +94,9 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
     data: {
       labels: months.map((m) => MONTHS[+m.slice(5) - 1]),
       datasets: [
-        series('Consumer', cum.consumed, C.ink, { at: 0.3, dy: -26 }),
-        series('Simulate', cum.simulate, C.blue, { at: 0.55, dy: -24 }),
-        series('Production', cum.produced, C.amber, { at: 0.8, dy: 26, color: C.ink }),
+        series('Consumer', cum.consumed, C.ink),
+        series('Simulate', cum.simulate, C.blue),
+        series('Production', cum.produced, C.amber),
       ],
     },
     options: {
@@ -113,8 +112,14 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
         tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${energy(Number(c.raw) * scale.div)} (สะสม)` } },
       },
     },
-    plugins: [pillLabels],
   })
+  lineBox.after(
+    chartLegend([
+      { label: 'Consumer', color: C.ink },
+      { label: 'Simulate', color: C.blue },
+      { label: 'Production', color: C.amber },
+    ]),
+  )
 
   // ── KPI cards ──
   const sum = (k: 'produced' | 'consumed' | 'simulate') => rows.reduce((s, x) => s + x.total[k], 0)
