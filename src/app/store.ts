@@ -87,6 +87,83 @@ export function upsertPlant(list: Plant[], plant: Plant): 'added' | 'replaced' {
   return 'added'
 }
 
+const byDate = (a: DailyRow, b: DailyRow): number => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)
+const isSample = (p: Plant): boolean => p.source.startsWith('sample')
+
+/**
+ * Union two day-lists by date, keeping the EXISTING row on a clash and appending only new dates,
+ * result sorted. A re-import of overlapping days never overwrites what is already on the dashboard —
+ * only genuinely new dates are added (user rule: "keep existing, add new days only").
+ */
+function mergeDaily(existing: DailyRow[], incoming: DailyRow[]): DailyRow[] {
+  const map = new Map<string, DailyRow>()
+  for (const r of existing) map.set(r.date, r) // existing wins
+  for (const r of incoming) if (!map.has(r.date)) map.set(r.date, r) // only dates not already present
+  return [...map.values()].sort(byDate)
+}
+
+/** What importing `incoming` would do to the plant list — for the preview before the user confirms. */
+export interface MergeInfo {
+  action: 'added' | 'replaced' | 'merged'
+  incomingDays: number // days in the file being imported
+  added: number // new dates that would be added
+  kept: number // existing dates kept unchanged (0 when added/replaced)
+  total: number // resulting day count
+  from: string // resulting date range start
+  to: string // resulting date range end
+}
+
+/**
+ * Describe (without mutating) how importing `incoming` combines with `existing`:
+ *  - no existing plant with that id → `added` (the whole file).
+ *  - existing is synthetic sample data → `replaced` wholesale (the real data supersedes the demo).
+ *  - otherwise → `merged`: keep every existing day, append only the file's new dates.
+ */
+export function mergeInfo(existing: Plant | undefined, incoming: Plant): MergeInfo {
+  if (!existing || isSample(existing)) {
+    const d = incoming.daily
+    return {
+      action: existing ? 'replaced' : 'added',
+      incomingDays: d.length,
+      added: d.length,
+      kept: 0,
+      total: d.length,
+      from: d[0]?.date ?? '',
+      to: d[d.length - 1]?.date ?? '',
+    }
+  }
+  const merged = mergeDaily(existing.daily, incoming.daily)
+  return {
+    action: 'merged',
+    incomingDays: incoming.daily.length,
+    added: merged.length - existing.daily.length,
+    kept: existing.daily.length,
+    total: merged.length,
+    from: merged[0]?.date ?? '',
+    to: merged[merged.length - 1]?.date ?? '',
+  }
+}
+
+/**
+ * Apply an import: add a new plant, replace a sample, or merge days into an existing real plant
+ * (keeping existing days, appending only new dates). Returns the same {@link MergeInfo} describing
+ * what happened. A merge keeps the existing plant's id + name and adopts the new file's source name.
+ */
+export function applyMerge(list: Plant[], incoming: Plant): MergeInfo {
+  const i = list.findIndex((p) => p.id === incoming.id)
+  const existing = i >= 0 ? list[i] : undefined
+  const info = mergeInfo(existing, incoming)
+  if (!existing) {
+    list.push(incoming)
+    list.sort((a, b) => a.id.localeCompare(b.id))
+  } else if (info.action === 'replaced') {
+    list[i] = incoming
+  } else {
+    list[i] = { ...existing, daily: mergeDaily(existing.daily, incoming.daily), source: incoming.source }
+  }
+  return info
+}
+
 export type KV = Pick<Storage, 'getItem' | 'setItem'> & { removeItem?: Storage['removeItem'] }
 
 /**

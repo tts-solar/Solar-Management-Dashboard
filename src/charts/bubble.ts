@@ -1,8 +1,12 @@
 import type { Chart, Plugin } from 'chart.js'
 import { formatYM } from '../data/metrics'
-import { C, axisTitle, fmt0, mountChart } from './common'
+import { C, axisTitle, chartLegend, fmt0, mountChart } from './common'
 
-/** "Efficiency and Age Relationship": one bubble per plant, size = capacity, 4 labelled zones. */
+/**
+ * "Efficiency and Age Relationship": one bubble per plant, size = capacity, 4 zones.
+ * UI: the zone NAMES are an HTML key below the chart (bubbleLegend) — they used to be pill
+ * labels drawn over the plot, which covered the bubbles. The colored zones + split lines stay.
+ */
 
 export interface BubblePoint {
   id: string
@@ -20,18 +24,24 @@ export interface BubbleOptions {
 
 interface Zone {
   text: string
-  bg: string
-  pill: string
-  ink: string
+  bg: string // fill drawn behind the bubbles
+  key: string // swatch color for the HTML key below the chart
   left: boolean
   top: boolean
 }
 const ZONES: Zone[] = [
-  { text: 'Plants ที่ควร Re-invest', bg: 'rgba(242,169,59,0.16)', pill: '#f7c948', ink: C.ink, left: true, top: true },
-  { text: 'Plants ที่ทำงานผิดปกติ', bg: 'rgba(192,0,0,0.13)', pill: C.bad, ink: '#fff', left: true, top: false },
-  { text: 'Plants ตัวอย่างน่าทำมาตรฐาน', bg: 'rgba(30,158,90,0.15)', pill: C.ok, ink: '#fff', left: false, top: true },
-  { text: 'Plants ทำงานปกติ', bg: 'rgba(0,0,0,0)', pill: '#fff', ink: C.ink, left: false, top: false },
+  { text: 'Plants ที่ควร Re-invest', bg: 'rgba(242,169,59,0.16)', key: '#f2a93b', left: true, top: true },
+  { text: 'Plants ที่ทำงานผิดปกติ', bg: 'rgba(192,0,0,0.13)', key: C.bad, left: true, top: false },
+  { text: 'Plants ตัวอย่างน่าทำมาตรฐาน', bg: 'rgba(30,158,90,0.15)', key: C.ok, left: false, top: true },
+  { text: 'Plants ทำงานปกติ', bg: 'rgba(0,0,0,0)', key: '#9aa0a6', left: false, top: false },
 ]
+
+/** The 4 zone names as an HTML key (colored chips below the chart), so nothing hides the data points. */
+export function bubbleLegend(): HTMLElement {
+  const key = chartLegend(ZONES.map((z) => ({ label: z.text, color: z.key })))
+  key.classList.add('zone-key')
+  return key
+}
 
 function zonesPlugin(o: BubbleOptions): Plugin<'bubble'> {
   return {
@@ -58,37 +68,6 @@ function zonesPlugin(o: BubbleOptions): Plugin<'bubble'> {
       ctx.moveTo(a.left, sy)
       ctx.lineTo(a.right, sy)
       ctx.stroke()
-      ctx.restore()
-    },
-    afterDatasetsDraw(chart) {
-      const { ctx, chartArea: a, scales } = chart
-      const sx = Math.min(Math.max(scales.x.getPixelForValue(o.effSplit * 100), a.left), a.right)
-      const sy = Math.min(Math.max(scales.y.getPixelForValue(o.ageSplit), a.top), a.bottom)
-      ctx.save()
-      ctx.font = `700 11px ${chart.options.font?.family ?? 'sans-serif'}`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      for (const z of ZONES) {
-        const x0 = z.left ? a.left : sx
-        const x1 = z.left ? sx : a.right
-        const w = x1 - x0
-        if (w < 40) continue // zone squeezed off-screen
-        const text = z.text
-        const tw = Math.min(ctx.measureText(text).width + 22, w - 8)
-        const h = 20
-        // hug the age split line, like the slide
-        const cy = z.top ? Math.max(sy - h, a.top + h / 2 + 2) : Math.min(sy + h, a.bottom - h / 2 - 2)
-        const cx = x0 + w / 2
-        ctx.beginPath()
-        ctx.roundRect(cx - tw / 2, cy - h / 2, tw, h, h / 2)
-        ctx.fillStyle = z.pill
-        ctx.fill()
-        ctx.strokeStyle = C.ink
-        ctx.lineWidth = 1
-        ctx.stroke()
-        ctx.fillStyle = z.ink
-        ctx.fillText(text, cx, cy, tw - 10)
-      }
       ctx.restore()
     },
   }

@@ -4,7 +4,7 @@ import { settingsFor, type SettingsMap } from '../data/settings'
 import type { Plant } from '../data/types'
 import type { Route } from '../app/router'
 import { C, MONTHS, axisTitle, chartLegend, energy, energyScale, kpiCard, mountChart, pct } from '../charts/common'
-import { bubbleChart } from '../charts/bubble'
+import { bubbleChart, bubbleLegend } from '../charts/bubble'
 import { treemapChart } from '../charts/treemap'
 
 export interface ViewCtx {
@@ -147,6 +147,7 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
       })),
     { effSplit, ageSplit: REINVEST_AGE, onClick: open },
   )
+  box('bubble').after(bubbleLegend())
 
   // ── plants treemap ──
   treemapChart(
