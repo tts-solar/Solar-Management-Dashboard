@@ -6,11 +6,8 @@ import './styles.css'
 import { Chart, registerables } from 'chart.js'
 import { TreemapController, TreemapElement } from 'chartjs-chart-treemap'
 
-import sampleCsv from '../data/sample-MH.csv?raw'
-import { parseCsv } from './data/csv'
 import { monthsOf, yearsOf } from './data/aggregate'
 import { clearSettings, loadSettings, saveSettings, settingsFor, type SettingsMap } from './data/settings'
-import { demoPlants, DEMO_SETTINGS } from './data/demo'
 import type { Plant } from './data/types'
 import { go, onRoute, toHash, type Route } from './app/router'
 import { createShell, type Crumb } from './app/shell'
@@ -33,14 +30,13 @@ Chart.defaults.color = '#111'
 const embedded = readEmbedded(document)
 capturePristine(document)
 
-// IS_DEMO now governs ONE thing: the online build seeds synthetic sample plants + preset settings as a
-// first-load showcase; the offline build starts empty (user imports real CSVs). All data features
-// (import/save/persist/clear/meter) run in BOTH builds behind the CSP network-lock (vite.config.ts).
-// Inline on import.meta.env.MODE so Vite folds it to a literal and the offline bundle drops the samples.
+// IS_DEMO now governs only two things: the storage SUFFIX (the online build shares one scope; a blank
+// offline file is scoped per path) and the "download blank offline" handout button. BOTH builds start
+// empty — the user imports real CSVs — and auto-remember them in this browser behind the CSP network-lock
+// (vite.config.ts). Kept inline on import.meta.env.MODE so Vite still folds it to a literal per build.
 const IS_DEMO = import.meta.env.MODE !== 'offline'
-const samplePlant = (): Plant => ({ id: 'MH', name: 'MH', daily: parseCsv(sampleCsv).daily, source: 'sample-MH.csv' })
 // each file keeps its own data: a saved copy by its download time, a blank offline file by its own path
-// (so two blank files in one folder never cross-see). Demo stays on the shared empty scope.
+// (so two blank files in one folder never cross-see). The online build shares one empty scope.
 const SUFFIX = embedded ? `:${embedded.id}` : IS_DEMO ? '' : `:${location.pathname}`
 // Storage is loaded asynchronously in boot() (IndexedDB is async). plants/settings stay the SAME
 // arrays for the whole session — boot() fills them in place (push / assign), never reassigns — so
@@ -280,17 +276,11 @@ function placeholder(text: string, links: Crumb[] = []): void {
 async function boot(): Promise<void> {
   storage = await openScopedStorage(SUFFIX)
   const remembered = embedded ? [] : loadPlants(storage)
-  const initial: Plant[] = embedded
-    ? embedded.plants
-    : remembered.length
-      ? remembered
-      : IS_DEMO
-        ? [samplePlant(), ...demoPlants()]
-        : []
+  const initial: Plant[] = embedded ? embedded.plants : remembered
   plants.push(...initial)
   Object.assign(
     settings,
-    embedded ? { ...embedded.settings, ...loadSettings(storage) } : { ...(IS_DEMO ? DEMO_SETTINGS : {}), ...loadSettings(storage) },
+    embedded ? { ...embedded.settings, ...loadSettings(storage) } : loadSettings(storage),
   )
   void refreshMeter()
   onRoute(render)

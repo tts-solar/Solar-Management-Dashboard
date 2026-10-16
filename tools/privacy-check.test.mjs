@@ -7,6 +7,8 @@ const prints = [{ file: 'data/sample-Z.csv', lines: sampleFingerprints(CSV) }]
 const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; connect-src 'none'; form-action 'none'">`
 const demoHtml = `<html><head>${CSP}</head><script>var d=\`${CSV.replace(/\r/g, '')}\`</script></html>`
 const offlineHtml = `<html><head>${CSP}</head><script>import CSV</script></html>`
+// a clean single-file build: network-locked, carries no sample data (the new demo starts empty)
+const cleanHtml = `<html><head>${CSP}</head><script>var app=1</script></html>`
 
 describe('sampleFingerprints', () => {
   it('picks 3 data rows, no header, no CR', () => {
@@ -60,15 +62,19 @@ describe('checkBundledModules (what the build actually bundled)', () => {
     '\0vite/preload-helper.js',
   ]
   const sample = 'D:/Solar Management Dashboard/data/sample-B.csv?raw'
+  const packagesOnly = ['D:/Solar Management Dashboard/node_modules/@fontsource/montserrat/latin-400.css']
 
-  it('passes app code, packages and (demo) sample CSVs', () => {
-    expect(checkBundledModules([...clean, sample], { root: ROOT, offline: false })).toEqual([])
+  it('passes app code and packages in both builds', () => {
+    expect(checkBundledModules(clean, { root: ROOT, offline: false })).toEqual([])
     expect(checkBundledModules(clean, { root: ROOT, offline: true })).toEqual([])
   })
   it('matches the root regardless of drive-letter case and slashes', () => {
     expect(checkBundledModules(['d:\\Solar Management Dashboard\\src\\main.ts'], { root: 'D:\\Solar Management Dashboard\\', offline: true })).toEqual([])
   })
-  it('fails when the offline build bundles even a sample', () => {
+  it('fails when either build bundles a sample (no build ships data now)', () => {
+    expect(checkBundledModules([...clean, sample], { root: ROOT, offline: false })).toEqual([
+      'demo build bundles a file outside the allowlist: data/sample-B.csv',
+    ])
     expect(checkBundledModules([...clean, sample], { root: ROOT, offline: true })).toEqual([
       'offline build bundles a file outside the allowlist: data/sample-B.csv',
     ])
@@ -82,21 +88,21 @@ describe('checkBundledModules (what the build actually bundled)', () => {
     'D:/elsewhere/real.csv',
     'D:/elsewhere/node_modules/x/real.csv', // a node_modules folder outside this repo is not a package
   ])('fails on %s', (id) => {
-    const problems = checkBundledModules([...clean, sample, id], { root: ROOT, offline: false })
+    const problems = checkBundledModules([...clean, id], { root: ROOT, offline: false })
     expect(problems).toHaveLength(1)
     expect(problems[0]).toContain('demo build bundles a file outside the allowlist')
   })
   it.each(['src/x.module.css', 'node_modules/pkg/y.module.scss'])('refuses a CSS Module: %s', (rel) => {
-    expect(checkBundledModules([...clean, sample, `${ROOT}/${rel}`], { root: ROOT, offline: false })).toEqual([
+    expect(checkBundledModules([...clean, `${ROOT}/${rel}`], { root: ROOT, offline: false })).toEqual([
       `demo build uses a CSS Module (not allowed — it can pull in files unchecked): ${rel}`,
     ])
   })
-  it('expectSamples:false skips the blind check (CSS sources never include samples)', () => {
-    expect(checkBundledModules(clean, { root: ROOT, offline: false, expectSamples: false })).toEqual([])
+  it('expectAppCode:false skips the blind check (a stylesheet set can be all packages)', () => {
+    expect(checkBundledModules(packagesOnly, { root: ROOT, offline: false, expectAppCode: false })).toEqual([])
   })
-  it('fails when the demo build shows no sample (guard is blind)', () => {
-    expect(checkBundledModules(clean, { root: ROOT, offline: false })).toEqual([
-      'demo build shows no sample CSV — the bundled-module guard sees nothing (broken)',
+  it('fails when the build shows no app code (guard is blind)', () => {
+    expect(checkBundledModules(packagesOnly, { root: ROOT, offline: false })).toEqual([
+      'demo build shows no app code — the bundled-module guard sees nothing (broken)',
     ])
   })
 })
@@ -113,39 +119,38 @@ describe('checkDist (what gets published)', () => {
 })
 
 describe('checkDemo (demo bundle)', () => {
-  it('passes when samples and the network lock are present', () => {
-    expect(checkDemo(demoHtml, prints)).toEqual([])
+  it('passes with the network lock and no samples', () => {
+    expect(checkDemo(cleanHtml, prints)).toEqual([])
   })
   it('allows inlined fonts and images', () => {
-    expect(checkDemo(demoHtml + 'url(data:font/woff2;base64,AA) url(data:image/png;base64,AA) url(data:image/svg+xml,%3C)', prints)).toEqual([])
+    expect(checkDemo(cleanHtml + 'url(data:font/woff2;base64,AA) url(data:image/png;base64,AA) url(data:image/svg+xml,%3C)', prints)).toEqual([])
   })
   it.each([
     ['data:text/csv;base64,AA', 'text/csv'], // CSS url() to a CSV gets inlined like this
     ['data:application/octet-stream;base64,AA', 'application/octet-stream'],
     ['data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,AA', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
   ])('fails on an inlined %s', (uri, type) => {
-    const problems = [checkDemo(demoHtml + `url(${uri})`, prints), checkOffline(offlineHtml + `url(${uri})`, prints)]
+    const problems = [checkDemo(cleanHtml + `url(${uri})`, prints), checkOffline(offlineHtml + `url(${uri})`, prints)]
     expect(problems).toEqual([
       [`demo bundle inlines a file that is not a font or image: ${type}`],
       [`offline bundle inlines a file that is not a font or image: ${type}`],
     ])
   })
   it('does not mistake minified code for an inlined file', () => {
-    expect(checkDemo(demoHtml + '{data:t/e,label:n}', prints)).toEqual([])
+    expect(checkDemo(cleanHtml + '{data:t/e,label:n}', prints)).toEqual([])
   })
-  it('allows import code now — the online build ships it; the CSP lock is what keeps data in', () => {
-    expect(checkDemo(demoHtml + `<script>addEventListener('dragover',f)</script><button>ล้างข้อมูล</button>`, prints)).toEqual([])
+  it('allows import code — both builds ship it; the CSP lock is what keeps data in', () => {
+    expect(checkDemo(cleanHtml + `<script>addEventListener('dragover',f)</script><button>ล้างข้อมูล</button>`, prints)).toEqual([])
     // the offline bundle is allowed to carry it too
     expect(checkOffline(offlineHtml + `<button>ล้างข้อมูล</button>`, prints)).toEqual([])
   })
   it('fails when the CSP network lock is missing (online holds imported data, so the lock is required)', () => {
-    const problems = checkDemo(demoHtml.replace(CSP, ''), prints)
+    const problems = checkDemo(cleanHtml.replace(CSP, ''), prints)
     expect(problems).toHaveLength(3)
     expect(problems.join(' ')).toContain("connect-src 'none'")
   })
-  it('fails when the samples are missing (detector or wrong file)', () => {
-    const problems = checkDemo('<html></html>', prints)
-    expect(problems[0]).toContain('missing sample data from data/sample-Z.csv')
+  it('fails when a sample leaks into the demo bundle (it must start empty)', () => {
+    expect(checkDemo(demoHtml, prints)).toEqual(['demo bundle contains sample data from data/sample-Z.csv'])
   })
 })
 

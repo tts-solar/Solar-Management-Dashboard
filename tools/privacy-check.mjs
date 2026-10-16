@@ -1,7 +1,8 @@
 /**
  * Privacy guardrail (T-008): fail the build if real homeowner data could reach the public repo or site.
- * Repo and Pages site are public, so only data/sample-*.csv may ever be bundled or tracked.
- * Reports file and marker names only — never data contents (CI logs are public).
+ * Repo and Pages site are public. data/sample-*.csv may be TRACKED (synthetic fixtures), but NO build
+ * bundles any data file: the online build starts empty and holds only what the visitor imports in their
+ * own browser, behind the CSP network-lock. Reports file and marker names only — never data contents (CI logs are public).
  *
  * Two places run it: checkBundledModules inside each Vite build (vite.config.ts), and this CLI after both
  * builds (`npm run build` ends with it):
@@ -35,31 +36,33 @@ const CSS_MODULE = /\.module\.[a-z]+$/i
 /**
  * (a) What a build actually bundled: the module ids Vite resolved (called from the vite.config.ts plugin), so no
  * way of writing an import — glob, alias, URL, JSON — can slip past. Allowlist: app code in src/, packages,
- * index.html, bundler-virtual ids, and data/sample-*.csv in the demo build only. Anything else fails.
- * expectSamples (default: demo build): fail if no sample is seen — the guard would be blind.
+ * index.html and bundler-virtual ids. NO build bundles data/ any more (the online build starts empty), so a
+ * sample CSV — or any other data file — in the output is a leak risk and fails.
+ * expectAppCode (default on): fail if no app module is seen — the guard would be blind to the real module list.
+ * The CSS guard turns it off: a stylesheet set can legitimately be all packages (fonts).
  */
-export function checkBundledModules(ids, { root, offline, expectSamples = !offline }) {
+export function checkBundledModules(ids, { root, offline, expectAppCode = true }) {
   const base = `${root.replace(/\\/g, '/').replace(/\/$/, '')}/`.toLowerCase()
+  const label = offline ? 'offline' : 'demo'
   const problems = []
-  let samples = 0
+  let appCode = 0
   for (const raw of ids) {
     if (raw.startsWith('\0')) continue // virtual helper modules from plugins
     const id = raw.replace(/\\/g, '/').split('?')[0]
     const rel = id.toLowerCase().startsWith(base) ? id.slice(base.length) : id
     if (CSS_MODULE.test(rel)) {
-      problems.push(`${offline ? 'offline' : 'demo'} build uses a CSS Module (not allowed — it can pull in files unchecked): ${rel}`)
+      problems.push(`${label} build uses a CSS Module (not allowed — it can pull in files unchecked): ${rel}`)
       continue
     }
     // packages of this repo only — a node_modules folder elsewhere could hold anything
-    if (rel.startsWith('node_modules/') || rel === 'index.html' || APP_CODE.test(rel)) continue
-    if (!offline && SAMPLE_CSV.test(rel)) {
-      samples++
+    if (rel.startsWith('node_modules/') || rel === 'index.html' || APP_CODE.test(rel)) {
+      if (APP_CODE.test(rel)) appCode++
       continue
     }
-    problems.push(`${offline ? 'offline' : 'demo'} build bundles a file outside the allowlist: ${rel}`)
+    problems.push(`${label} build bundles a file outside the allowlist: ${rel}`)
   }
-  // the demo always bundles samples: seeing none means this guard is not getting the real module list
-  if (expectSamples && samples === 0) problems.push('demo build shows no sample CSV — the bundled-module guard sees nothing (broken)')
+  // no app module means Vite handed us no real module list — the guard would silently pass anything
+  if (expectAppCode && appCode === 0) problems.push(`${label} build shows no app code — the bundled-module guard sees nothing (broken)`)
   return problems
 }
 
@@ -89,15 +92,14 @@ const foundIn = (html, lines) => lines.some((l) => html.includes(l))
 const unprintable = (prints) => prints.filter((p) => p.lines.length === 0).map((p) => `${p.file} has no data rows to fingerprint`)
 
 /**
- * (c) online/demo bundle: it MUST carry the samples (showcase — else the detector is broken) AND the CSP
- * network-lock. The online build now ships the import UI, so the lock — not the absence of import code — is
- * what keeps imported real data from ever leaving the page.
+ * (c) online/demo bundle: it now starts EMPTY (no sample showcase) and only ever holds data the visitor
+ * imports in their own browser. So, like the offline build, it must carry NO sample data and MUST carry the
+ * CSP network-lock — the lock is what keeps imported real data from ever leaving the page.
  */
 export function checkDemo(html, prints) {
   const problems = [...unprintable(prints), ...inlinedFiles(html, 'demo')]
   for (const { file, lines } of prints) {
-    if (lines.length && !lines.every((l) => html.includes(l)))
-      problems.push(`demo bundle is missing sample data from ${file} — wrong file, or the sample detector is broken`)
+    if (foundIn(html, lines)) problems.push(`demo bundle contains sample data from ${file}`)
   }
   return [...problems, ...checkNetworkLock(html, 'demo')]
 }
@@ -185,7 +187,7 @@ export function main(argv = process.argv.slice(2)) {
   const offline = readBundle(root, offlinePath, 'offline')
   const results = [
     ['git tracks no real data', checkTracked(tracked)],
-    [`demo bundle (${demoPath}) has samples + network lock`, demo.html === null ? demo.problems : checkDemo(demo.html, prints)],
+    [`demo bundle (${demoPath}) has no samples, network locked`, demo.html === null ? demo.problems : checkDemo(demo.html, prints)],
     [`offline bundle (${offlinePath}) has no samples, network locked`, offline.html === null ? offline.problems : checkOffline(offline.html, prints)],
     ['dist/ holds only the two HTML files', checkDist(distFiles)],
   ]

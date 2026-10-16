@@ -62,7 +62,7 @@ function cssSourceGuard(offline: boolean, build: { root: string }) {
       css.walk((node) => {
         if (node.source?.input.file) files.add(node.source.input.file)
       })
-      const problems = checkBundledModules([...files], { root: build.root, offline, expectSamples: false })
+      const problems = checkBundledModules([...files], { root: build.root, offline, expectAppCode: false })
       if (problems.length) throw new Error(`privacy guard (T-008):\n  - ${problems.join('\n  - ')}`)
     },
   }
