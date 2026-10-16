@@ -7,7 +7,7 @@ import { Chart, registerables } from 'chart.js'
 import { TreemapController, TreemapElement } from 'chartjs-chart-treemap'
 
 import { monthsOf, yearsOf } from './data/aggregate'
-import { clearSettings, loadSettings, saveSettings, settingsFor, type SettingsMap } from './data/settings'
+import { clearSettings, GLOBAL_KEY, loadSettings, saveSettings, settingsFor, type SettingsMap } from './data/settings'
 import type { Plant } from './data/types'
 import { go, onRoute, toHash, type Route } from './app/router'
 import { createShell, type Crumb } from './app/shell'
@@ -161,9 +161,10 @@ function showSettings(): void {
     settings,
     plantId: current.view === 'plant' ? current.plant : plants[0].id,
     displayName,
-    onSave: (id, values) => {
+    onSave: (id, values, global) => {
       // keep {} (not delete) so a reset also overrides a downloaded file's embedded settings
       settings[id] = values
+      settings[GLOBAL_KEY] = global
       const saved = saveSettings(settings, storage)
       shell.toast(saved ? 'บันทึกการตั้งค่าแล้ว' : 'ใช้ค่าใหม่แล้ว แต่เบราว์เซอร์นี้บันทึกถาวรไม่ได้')
       void refreshMeter()

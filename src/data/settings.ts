@@ -33,15 +33,26 @@ export const PEAK_TO_KWP = 0.8
 export type SettingsMap = Record<string, Partial<PlantSettings>>
 type KV = Pick<Storage, 'getItem' | 'setItem'> & { removeItem?: Storage['removeItem'] }
 
+/**
+ * Reserved SettingsMap key for the system-wide (global) defaults layer. A real plant id can never
+ * equal it: ids come from plantIdFromFile(), which takes base.split('_')[0], so no id ever contains
+ * an underscore. An older file/storage without this key resolves exactly as before (backward compat).
+ */
+export const GLOBAL_KEY = '__global__'
+
 const STORAGE_KEY = 'solar-dashboard:settings:v1'
 const NUMERIC = ['sunHours', 'performanceRatio', 'peakTestFactor', 'abnormalBelow', 'tariff', 'paybackPlanYears'] as const
 const OPTIONAL = ['kWp', 'peakTestKwhPerDay', 'investment'] as const
 
 const positive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
 
-/** Fill gaps and drop invalid values (from storage, embedded HTML or the form). */
-export function withDefaults(raw: Partial<PlantSettings> = {}): PlantSettings {
-  const s: PlantSettings = { ...DEFAULT_SETTINGS }
+/**
+ * Fill gaps and drop invalid values (from storage, embedded HTML or the form). `base` is the layer a
+ * blank/invalid field inherits from — DEFAULT_SETTINGS normally, or the resolved global layer when
+ * resolving one plant (per-plant override → global → default).
+ */
+export function withDefaults(raw: Partial<PlantSettings> = {}, base: PlantSettings = DEFAULT_SETTINGS): PlantSettings {
+  const s: PlantSettings = { ...base }
   for (const k of NUMERIC) {
     const v = raw[k]
     if (positive(v)) s[k] = v
@@ -90,4 +101,9 @@ export function clearSettings(kv: KV | null = browserStorage()): void {
   }
 }
 
-export const settingsFor = (map: SettingsMap, plantId: string): PlantSettings => withDefaults(map[plantId])
+/** The system-wide defaults layer (the "ตั้งค่ารวม" tab). Blank global fields fall back to DEFAULT_SETTINGS. */
+export const globalSettings = (map: SettingsMap): PlantSettings => withDefaults(map[GLOBAL_KEY])
+
+/** Resolve one plant through all three layers: per-plant override → global → built-in default/auto. */
+export const settingsFor = (map: SettingsMap, plantId: string): PlantSettings =>
+  withDefaults(map[plantId], globalSettings(map))

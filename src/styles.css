@@ -924,6 +924,95 @@ dialog.settings .actions .danger:hover {
   }
 }
 
+/* settings dialog: tabs */
+dialog.settings .settings-tabs {
+  gap: 16px;
+  margin: 2px 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+dialog.settings .settings-tabs .tab {
+  padding: 2px 0 7px;
+  margin-bottom: -1px;
+  font-size: 14px;
+}
+dialog.settings .panel[hidden] {
+  display: none;
+}
+dialog.settings .panel .note {
+  margin: 0 0 6px;
+}
+dialog.settings .row.pick {
+  margin-bottom: 4px;
+}
+/* a sub-heading inside the plant tab: "ค่ารวม (override เฉพาะ Plant)" */
+dialog.settings .subhead {
+  margin: 10px 0 2px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  color: var(--gray);
+  font-size: 11px;
+  font-weight: 700;
+}
+/* read-only auto field (Peak Test ต่อวัน) */
+dialog.settings input.readonly {
+  background: rgba(17, 24, 23, 0.04);
+  color: var(--gray);
+  cursor: default;
+}
+
+/* "?" help bubble + its tooltip (works on hover, keyboard focus, and mobile tap) */
+dialog.settings .row > span {
+  position: relative; /* anchors the tooltip to the label, so it never spills past the dialog */
+}
+.help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--gray);
+  font: 700 10px var(--font);
+  line-height: 1;
+  cursor: help;
+  vertical-align: middle;
+}
+.help:hover,
+.help.on {
+  border-color: var(--green);
+  color: var(--green);
+}
+.help:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+.help .tip {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  display: none;
+  width: max-content;
+  max-width: min(260px, 70vw);
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--green);
+  color: #fff;
+  font: 400 12px/1.45 var(--font);
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 8px 24px rgba(17, 24, 23, 0.35);
+  pointer-events: none;
+}
+.help:hover .tip,
+.help:focus-visible .tip,
+.help.on .tip {
+  display: block;
+}
+
 /* ── confirm dialog (replaces the native confirm) ───── */
 dialog.confirm {
   width: min(420px, calc(100vw - 32px));
