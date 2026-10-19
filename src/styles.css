@@ -1472,6 +1472,24 @@ dialog.export-dlg::backdrop {
   height: 16px;
   accent-color: var(--green);
 }
+.exp-year {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.exp-year .exp-label {
+  margin-bottom: 0;
+}
+.exp-select {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
 
 /* the full-screen printable report */
 .report-overlay {

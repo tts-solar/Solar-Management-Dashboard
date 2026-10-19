@@ -8,18 +8,18 @@ import { baht, fmt0, MONTHS, pct } from '../charts/common'
  * Export-to-Template: a per-plant savings report that mirrors the Greenergy_Saving layout
  * (header block + period table + saving bar chart), but fed with REAL data at a user-chosen
  * granularity. Unlike the source doc (a flat 25-year forecast), our rows are the actual data
- * periods — year, half-year (reusing the H1/H2 tariff split) or month — so the numbers are real.
+ * periods — by year or by month (the H1/H2 tariff split still applies at the day level), and can
+ * be narrowed to a single calendar year — so the numbers are real.
  *
  * Output = an in-page print overlay: the browser's own Print → "Save as PDF" turns it into a
  * document. Rendered inside the app (never a popup) so the CSP network-lock and scripts are intact;
  * @media print hides the dashboard and shows only the report, one plant per page.
  */
 
-export type Granularity = 'year' | 'half' | 'month'
+export type Granularity = 'year' | 'month'
 
 export const GRANULARITY_LABELS: Record<Granularity, string> = {
   year: 'รายปี',
-  half: 'ครึ่งปี',
   month: 'รายเดือน',
 }
 
@@ -43,27 +43,33 @@ export interface ReportRow {
 
 /** Which bucket a date falls in under the chosen granularity. */
 function bucketKey(date: string, g: Granularity): string {
-  if (g === 'year') return yearOf(date)
-  if (g === 'month') return monthOf(date)
-  return `${yearOf(date)}-H${+date.slice(5, 7) <= 6 ? 1 : 2}`
+  return g === 'year' ? yearOf(date) : monthOf(date)
 }
 
 /** Human label for a bucket key (English month to match the rest of the app). */
 function bucketLabel(key: string, g: Granularity): string {
   if (g === 'year') return key
-  if (g === 'month') {
-    const [y, m] = key.split('-')
-    return `${MONTHS[+m - 1]} ${y}`
-  }
-  const [y, h] = key.split('-')
-  return `${y} · ${h === 'H1' ? 'H1 (ม.ค.–มิ.ย.)' : 'H2 (ก.ค.–ธ.ค.)'}`
+  const [y, m] = key.split('-')
+  return `${MONTHS[+m - 1]} ${y}`
+}
+
+/** Daily rows limited to one calendar year, or all of them when no year is given. */
+function dailyInYear(plant: Plant, year?: string): DailyRow[] {
+  return year ? plant.daily.filter((d) => yearOf(d.date) === year) : plant.daily
+}
+
+/** Every calendar year present across the given plants' data, newest first. */
+export function yearsOf(plants: Plant[]): string[] {
+  const set = new Set<string>()
+  for (const p of plants) for (const d of p.daily) set.add(yearOf(d.date))
+  return [...set].sort().reverse()
 }
 
 /** Summarise one plant's real daily data into report rows, in period order. */
-export function reportRows(plant: Plant, s: PlantSettings, g: Granularity): ReportRow[] {
+export function reportRows(plant: Plant, s: PlantSettings, g: Granularity, year?: string): ReportRow[] {
   const r = resolve(plant, s)
   const buckets = new Map<string, DailyRow[]>()
-  for (const d of plant.daily) {
+  for (const d of dailyInYear(plant, year)) {
     const k = bucketKey(d.date, g)
     const arr = buckets.get(k)
     if (arr) arr.push(d)
@@ -155,15 +161,16 @@ function svgBars(rows: ReportRow[]): string {
 }
 
 /** HTML for one plant's report page (header block + table + saving bar chart). */
-function plantPage(plant: Plant, s: PlantSettings, name: string, g: Granularity): string {
+function plantPage(plant: Plant, s: PlantSettings, name: string, g: Granularity, year?: string): string {
   const r = resolve(plant, s)
-  const rows = reportRows(plant, s, g)
+  const rows = reportRows(plant, s, g, year)
   const t = totalsOf(rows)
+  const span = dailyInYear(plant, year)
   const years = t.days / 365.25
   const savingPerYear = years > 0 ? t.saving / years : 0
   const lastRow = rows[rows.length - 1]
-  const firstDate = plant.daily[0]?.date ?? '—'
-  const lastDate = plant.daily[plant.daily.length - 1]?.date ?? '—'
+  const firstDate = span[0]?.date ?? '—'
+  const lastDate = span[span.length - 1]?.date ?? '—'
   const showBill = t.imported > 0
 
   const kpi = (label: string, value: string, note?: string): string =>
@@ -240,8 +247,9 @@ export function buildReportHtml(
   settings: SettingsMap,
   displayName: (p: Plant) => string,
   g: Granularity,
+  year?: string,
 ): string {
-  return plants.map((p) => plantPage(p, settingsFor(settings, p.id), displayName(p), g)).join('')
+  return plants.map((p) => plantPage(p, settingsFor(settings, p.id), displayName(p), g, year)).join('')
 }
 
 // ── UI ─────────────────────────────────────────────────────────────────────
@@ -298,7 +306,7 @@ export function openExport(o: ExportOpts): void {
   const head = el('div', 'exp-head')
   head.append(
     el('h2', '', 'ส่งออกรายงานการประหยัด'),
-    el('p', 'exp-sub', 'เลือก Plant และช่วงเวลา แล้วสร้างรายงานสำหรับพิมพ์เป็น PDF (ข้อมูลจริง แยกตามปี/ครึ่งปี/เดือนได้)'),
+    el('p', 'exp-sub', 'เลือก Plant, ปี และช่วงเวลา แล้วสร้างรายงานสำหรับพิมพ์เป็น PDF (ข้อมูลจริง แยกตามปีหรือเดือน)'),
   )
 
   // plant checklist (all selected by default)
@@ -318,7 +326,7 @@ export function openExport(o: ExportOpts): void {
   // granularity radios
   const granBox = el('div', 'exp-gran')
   granBox.append(el('span', 'exp-label', 'ช่วงเวลา'))
-  const grans: Granularity[] = ['year', 'half', 'month']
+  const grans: Granularity[] = ['year', 'month']
   for (const gKey of grans) {
     const row = el('label', 'exp-radio')
     const input = el('input')
@@ -330,6 +338,20 @@ export function openExport(o: ExportOpts): void {
     granBox.append(row)
   }
 
+  // year filter (optional — restrict the whole report to one calendar year)
+  const yearBox = el('div', 'exp-year')
+  yearBox.append(el('span', 'exp-label', 'ปี'))
+  const yearSel = el('select', 'exp-select')
+  const allOpt = el('option', '', 'ทุกปี')
+  allOpt.value = ''
+  yearSel.append(allOpt)
+  for (const y of yearsOf(o.plants)) {
+    const opt = el('option', '', y)
+    opt.value = y
+    yearSel.append(opt)
+  }
+  yearBox.append(yearSel)
+
   const actions = el('div', 'confirm-actions')
   const cancel = el('button', 'c-btn ghost', 'ยกเลิก')
   cancel.type = 'button'
@@ -337,7 +359,7 @@ export function openExport(o: ExportOpts): void {
   make.type = 'button'
   actions.append(cancel, make)
 
-  dlg.append(head, plantBox, granBox, actions)
+  dlg.append(head, plantBox, granBox, yearBox, actions)
   document.body.append(dlg)
 
   const close = (): void => {
@@ -346,6 +368,7 @@ export function openExport(o: ExportOpts): void {
   }
   const chosenGran = (): Granularity =>
     (dlg.querySelector<HTMLInputElement>('input[name="exp-gran"]:checked')?.value as Granularity) ?? 'year'
+  const chosenYear = (): string | undefined => yearSel.value || undefined
 
   cancel.addEventListener('click', close)
   dlg.addEventListener('cancel', (e) => {
@@ -359,7 +382,7 @@ export function openExport(o: ExportOpts): void {
     const ids = new Set(boxes.filter((b) => b.input.checked).map((b) => b.id))
     const chosen = o.plants.filter((p) => ids.has(p.id))
     if (!chosen.length) return
-    const html = buildReportHtml(chosen, o.settings, o.displayName, chosenGran())
+    const html = buildReportHtml(chosen, o.settings, o.displayName, chosenGran(), chosenYear())
     close()
     openReportOverlay(html)
   })

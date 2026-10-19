@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildReportHtml, reportRows } from './exportReport'
+import { buildReportHtml, reportRows, yearsOf } from './exportReport'
 import { withDefaults, type PlantSettings } from '../data/settings'
 import type { DailyRow, Plant } from '../data/types'
 
@@ -32,13 +32,6 @@ describe('reportRows', () => {
     expect(row.days).toBe(2)
   })
 
-  it('splits a year into H1 / H2 buckets with their own tariff', () => {
-    const rows = reportRows(plant, s, 'half')
-    expect(rows.map((r) => r.key)).toEqual(['2024-H1', '2024-H2'])
-    expect(rows[0]).toMatchObject({ produced: 100, saving: 500 })
-    expect(rows[1]).toMatchObject({ produced: 200, saving: 1400 })
-  })
-
   it('buckets by month', () => {
     const rows = reportRows(plant, s, 'month')
     expect(rows.map((r) => r.key)).toEqual(['2024-03', '2024-08'])
@@ -57,6 +50,27 @@ describe('reportRows', () => {
     const auto = withDefaults({ tariff: 5 }) // kWp left null → auto-estimated
     const [row] = reportRows(flat, auto, 'year')
     expect(row.efficiency).toBeNull()
+  })
+
+  it('limits rows to a single calendar year when year is given', () => {
+    const multi: Plant = {
+      id: 'M',
+      name: 'M',
+      daily: [day('2024-05-10', 100), day('2025-05-10', 200), day('2026-05-10', 300)],
+      source: 'test',
+    }
+    const ss = withDefaults({ kWp: 10, tariff: 5 })
+    const rows = reportRows(multi, ss, 'year', '2025')
+    expect(rows.map((r) => r.key)).toEqual(['2025'])
+    expect(rows[0].produced).toBe(200)
+  })
+})
+
+describe('yearsOf', () => {
+  it('lists every distinct year across plants, newest first', () => {
+    const a: Plant = { id: 'a', name: 'a', daily: [day('2024-01-01', 1), day('2026-01-01', 1)], source: 'test' }
+    const b: Plant = { id: 'b', name: 'b', daily: [day('2025-01-01', 1)], source: 'test' }
+    expect(yearsOf([a, b])).toEqual(['2026', '2025', '2024'])
   })
 })
 
