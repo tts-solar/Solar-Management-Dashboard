@@ -1403,3 +1403,229 @@ dialog.import-dlg::backdrop {
   font-size: 0.85rem;
   font-weight: 600;
 }
+
+/* ── export report ─────────────────────────────────── */
+dialog.export-dlg {
+  width: min(520px, calc(100vw - 32px));
+  padding: 24px;
+  border: 0;
+  border-radius: 16px;
+  color: var(--ink);
+  font-family: var(--font);
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 24px 60px rgba(17, 24, 23, 0.32);
+}
+dialog.export-dlg[open] {
+  display: flex;
+  animation: pop-in 0.2s ease-out both;
+}
+dialog.export-dlg::backdrop {
+  background: rgba(17, 24, 23, 0.45);
+  backdrop-filter: blur(2px);
+}
+.exp-head h2 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+}
+.exp-sub {
+  margin: 0;
+  color: var(--gray);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.exp-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--gray);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.exp-plants,
+.exp-gran {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.exp-plants {
+  max-height: 34vh;
+  overflow-y: auto;
+}
+.exp-gran {
+  flex-flow: row wrap;
+  gap: 18px;
+}
+.exp-check,
+.exp-radio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.exp-check input,
+.exp-radio input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--green);
+}
+
+/* the full-screen printable report */
+.report-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: #f4f6f5;
+}
+.report-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(17, 24, 23, 0.2);
+}
+.report-tb-title {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.report-doc {
+  width: min(900px, 100%);
+  margin: 24px auto;
+  padding: 0 16px 48px;
+}
+.rp-page {
+  margin-bottom: 24px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(17, 24, 23, 0.08);
+}
+.rp-head {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--green);
+}
+.rp-title h2 {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--green);
+}
+.rp-sub {
+  margin: 4px 0 0;
+  color: var(--gray);
+  font-size: 0.85rem;
+}
+.rp-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+.rp-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f4f6f5;
+}
+.rp-kpi-l {
+  color: var(--gray);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.rp-kpi-v {
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 800;
+}
+.rp-table {
+  width: 100%;
+  margin-bottom: 20px;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.rp-table th,
+.rp-table td {
+  padding: 7px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--line);
+}
+.rp-table th:first-child,
+.rp-table td:first-child {
+  text-align: left;
+}
+.rp-table thead th {
+  border-bottom: 0;
+  background: var(--green);
+  color: #fff;
+  font-weight: 700;
+}
+.rp-table tbody tr:nth-child(even) {
+  background: #f7f9f8;
+}
+.rp-table .rp-total td {
+  border-top: 2px solid var(--green);
+  border-bottom: 0;
+  background: #eef3f1;
+  font-weight: 800;
+}
+.rp-chart-wrap h3 {
+  margin: 0 0 8px;
+  color: var(--green);
+  font-size: 0.95rem;
+}
+.rp-chart {
+  width: 100%;
+  height: auto;
+}
+
+@media print {
+  body:has(.report-overlay) #app {
+    display: none !important;
+  }
+  .report-overlay {
+    position: static;
+    overflow: visible;
+    background: #fff;
+  }
+  .report-toolbar {
+    display: none !important;
+  }
+  .report-doc {
+    width: auto;
+    margin: 0;
+    padding: 0;
+  }
+  .rp-page {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    page-break-after: always;
+  }
+  .rp-page:last-child {
+    page-break-after: auto;
+  }
+  .rp-page,
+  .rp-page * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

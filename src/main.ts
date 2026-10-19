@@ -16,6 +16,7 @@ import { capturePristine, downloadHtml, downloadBlankOffline, blankOfflineAvaila
 import { readPlantFiles, type Imported } from './app/upload'
 import { openImportDialog } from './app/importDialog'
 import { openSettings } from './app/settingsPanel'
+import { openExport } from './app/exportReport'
 import { confirmDialog } from './app/confirm'
 import { MONTHS, destroyCharts } from './charts/common'
 import { renderOverview as overviewView, type ViewCtx } from './views/overview'
@@ -50,6 +51,7 @@ const shell = createShell(document.getElementById('app')!, {
   onImport: (files) => openImport(files),
   onPlantSettings: (id) => showSettings(id),
   onDownload: () => saveOrDownload(),
+  onExport: () => showExport(),
   onClear: () => void clearData(),
   // Demo only, and only once the blank offline build is baked in (build:offline runs before build:demo).
   onDownloadBlank: IS_DEMO && blankOfflineAvailable() ? () => handoutBlankOffline() : undefined,
@@ -179,6 +181,11 @@ function showSettings(plantId?: string): void {
       else render(current)
     },
   })
+}
+
+function showExport(): void {
+  if (!plants.length) return shell.toast('ยังไม่มี Plant — นำเข้าไฟล์ CSV ก่อน', 'error')
+  openExport({ plants, settings, displayName })
 }
 
 const last = <T>(a: T[]): T | undefined => a[a.length - 1]
