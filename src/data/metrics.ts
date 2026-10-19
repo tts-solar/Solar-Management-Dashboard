@@ -193,8 +193,8 @@ export function bep(plant: Plant, r: Resolved, asOf?: string): BepResult {
     bepDate: bepDay === null ? null : dateFromNumber(start + bepDay - 1),
     planYears: r.paybackPlanYears,
     fasterPct: bepYears === null ? null : ((r.paybackPlanYears - bepYears) / r.paybackPlanYears) * 100,
-    // user-set display age wins; else compute from the commissioning date (payback math below is unaffected either way)
-    ageYears: r.ageYears ?? ageYears(r.startDate, asOf ?? lastData ?? r.startDate),
+    // display age, computed from the commissioning date (does not affect the payback math above)
+    ageYears: ageYears(r.startDate, asOf ?? lastData ?? r.startDate),
     avgDailyProduced: avg,
   }
 }

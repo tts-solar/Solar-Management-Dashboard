@@ -1,4 +1,4 @@
-import { ageYears, formatYM, resolve } from '../data/metrics'
+import { resolve } from '../data/metrics'
 import { DEFAULT_SETTINGS, GLOBAL_KEY, globalSettings, withDefaults, type PlantSettings, type SettingsMap } from '../data/settings'
 import type { Plant } from '../data/types'
 import { confirmDialog } from './confirm'
@@ -30,6 +30,7 @@ interface Field {
   step?: string
   tip: string
   scope: Scope // global = system-wide (shown in both tabs); plant = per-plant only
+  globalOnly?: boolean // global-only: shown in the global tab, never offered as a per-plant override
 }
 
 // Editable fields. Order within each scope is the order shown.
@@ -37,7 +38,6 @@ const FIELDS: Field[] = [
   // per-plant
   { key: 'name', label: 'ชื่อที่แสดง', kind: 'text', scope: 'plant', tip: 'ชื่อที่โชว์บน dashboard แทนรหัส Plant (เว้นว่าง = ใช้รหัส)' },
   { key: 'startDate', label: 'วันเริ่มใช้งาน', kind: 'date', scope: 'plant', tip: 'วันที่ระบบเริ่มผลิตไฟ ใช้คำนวณอายุและการคืนทุน' },
-  { key: 'ageYears', label: 'อายุระบบ (ปี)', kind: 'number', unit: 'ปี', step: '0.5', scope: 'plant', tip: 'ตั้งอายุระบบที่จะแสดงบนการ์ดและกราฟเอง (เว้นว่าง = คำนวณจากวันเริ่มใช้งาน) ไม่กระทบการคำนวณจุดคืนทุน' },
   { key: 'kWp', label: 'ขนาดติดตั้ง', kind: 'number', unit: 'kWp', step: '0.1', scope: 'plant', tip: 'กำลังผลิตสูงสุดของแผงที่ติดตั้ง เป็นตัวหารหลักของค่า Efficiency' },
   { key: 'investment', label: 'เงินลงทุน', kind: 'number', unit: '฿', step: '1000', scope: 'plant', tip: 'เงินที่ลงทุนติดตั้งระบบนี้ ใช้คำนวณระยะคืนทุน' },
   { key: 'peakTestFactor', label: 'Peak Test เทียบ Simulate', kind: 'percent', unit: '%', step: '1', scope: 'plant', tip: '% ผลวัดจริงเทียบกับค่าที่จำลองไว้ ของ Plant นี้' },
@@ -47,6 +47,7 @@ const FIELDS: Field[] = [
   { key: 'tariff', label: 'ค่าไฟ', kind: 'number', unit: '฿/kWh', step: '0.01', scope: 'global', tip: 'ราคาต่อหน่วยไฟ ใช้คำนวณมูลค่าที่ประหยัดและการคืนทุน' },
   { key: 'abnormalBelow', label: 'ผิดปกติเมื่อ Efficiency ต่ำกว่า', kind: 'percent', unit: '%', step: '1', scope: 'global', tip: 'ถ้า Efficiency ต่ำกว่า % นี้ จะถูกทำเครื่องหมายว่าผิดปกติ' },
   { key: 'paybackPlanYears', label: 'แผนคืนทุน', kind: 'number', unit: 'ปี', step: '0.5', scope: 'global', tip: 'จำนวนปีเป้าหมายที่ต้องการคืนทุน' },
+  { key: 'reinvestAge', label: 'เส้นอายุ Re-invest', kind: 'number', unit: 'ปี', step: '0.5', scope: 'global', globalOnly: true, tip: 'เส้นประแนวนอน "Age of Plant" ในกราฟ Efficiency–Age: Plant ที่อายุเกินค่านี้ควรพิจารณาลงทุนใหม่ · ใช้กับทุก Plant (ตั้งแยกราย Plant ไม่ได้)' },
 ]
 
 // Shown read-only in the plant tab: always computed, never stored.
@@ -55,6 +56,9 @@ const PEAK_TIP = 'พลังงานที่ควรผลิตได้�
 const byKey = Object.fromEntries(FIELDS.map((f) => [f.key, f])) as Record<Key, Field>
 const PLANT_FIELDS = FIELDS.filter((f) => f.scope === 'plant')
 const GLOBAL_FIELDS = FIELDS.filter((f) => f.scope === 'global')
+// Global fields that may ALSO be overridden per plant. Global-only fields (e.g. reinvestAge) appear
+// in the global tab but never as a per-plant override row, so the plant tab iterates this subset.
+const PLANT_OVERRIDE_FIELDS = GLOBAL_FIELDS.filter((f) => !f.globalOnly)
 
 const round = (n: number, d = 2) => String(Math.round(n * 10 ** d) / 10 ** d)
 
@@ -85,8 +89,6 @@ function autoHint(f: Field, plant: Plant, raw: Partial<PlantSettings>, base: Pla
       return `อัตโนมัติ ≈ ${Math.round(r.investment).toLocaleString('en-US')}`
     case 'startDate':
       return r.startDate // first day of real data when left blank
-    case 'ageYears':
-      return `อัตโนมัติ ≈ ${formatYM(ageYears(r.startDate, plant.daily[plant.daily.length - 1]?.date ?? r.startDate))}` // computed from the commissioning date
     default:
       return ''
   }
@@ -221,7 +223,7 @@ export function openSettings(o: SettingsPanelOpts): void {
   sub.className = 'subhead'
   sub.textContent = 'ค่ารวม (เว้นว่าง = ใช้ค่ารวม · กรอก = เฉพาะ Plant นี้)'
   pGrid.append(sub)
-  for (const f of GLOBAL_FIELDS) pGrid.append(makeRow(f, pInputs, pUnits))
+  for (const f of PLANT_OVERRIDE_FIELDS) pGrid.append(makeRow(f, pInputs, pUnits))
   pPanel.append(pickRow, pNote, pGrid)
 
   const plantOf = (): Plant => o.plants.find((p) => p.id === pick.value) ?? o.plants[0]
@@ -248,7 +250,7 @@ export function openSettings(o: SettingsPanelOpts): void {
   // load the current plant's stored values into the plant tab
   const loadPlant = (): void => {
     const raw = o.settings[plantOf().id] ?? {}
-    for (const f of [...PLANT_FIELDS, ...GLOBAL_FIELDS]) inputs(f).value = show(f, raw[f.key])
+    for (const f of [...PLANT_FIELDS, ...PLANT_OVERRIDE_FIELDS]) inputs(f).value = show(f, raw[f.key])
   }
 
   // refresh the grey placeholders + the read-only peak, using the live global tab (so edits reflect)
@@ -261,7 +263,7 @@ export function openSettings(o: SettingsPanelOpts): void {
       // shows its built-in default so the blank is never mute
       inputs(f).placeholder = autoHint(f, plant, raw, gBase) || `เริ่มต้น ${show(f, DEFAULT_SETTINGS[f.key])}`
     }
-    for (const f of GLOBAL_FIELDS) inputs(f).placeholder = `ใช้ค่ารวม (${show(f, gBase[f.key])})`
+    for (const f of PLANT_OVERRIDE_FIELDS) inputs(f).placeholder = `ใช้ค่ารวม (${show(f, gBase[f.key])})`
     // a date input ignores placeholder → surface the auto start date as grey helper text
     const sd = byKey.startDate
     const sdUnit = pUnits.get('startDate')
@@ -327,7 +329,7 @@ export function openSettings(o: SettingsPanelOpts): void {
   form.addEventListener('submit', (e) => {
     e.preventDefault()
     const global = collect(gInputs, GLOBAL_FIELDS)
-    const values = collect(pInputs, [...PLANT_FIELDS, ...GLOBAL_FIELDS])
+    const values = collect(pInputs, [...PLANT_FIELDS, ...PLANT_OVERRIDE_FIELDS])
     finish()
     o.onSave(plantOf().id, values, global)
   })

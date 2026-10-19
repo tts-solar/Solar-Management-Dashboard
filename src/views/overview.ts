@@ -1,6 +1,6 @@
 import { inPeriod, monthsOf, sumRows } from '../data/aggregate'
 import { ageYears, cumulative, resolve, withMetrics, type MetricRow, type Resolved } from '../data/metrics'
-import { settingsFor, type SettingsMap } from '../data/settings'
+import { globalSettings, settingsFor, type SettingsMap } from '../data/settings'
 import type { Plant } from '../data/types'
 import type { Route } from '../app/router'
 import { C, MONTHS, axisTitle, chartLegend, energy, energyScale, kpiCard, mountChart, pct } from '../charts/common'
@@ -13,9 +13,6 @@ export interface ViewCtx {
   displayName(p: Plant): string
   open(route: Route): void
 }
-
-/** Age (years) past which a low-efficiency plant is flagged "consider re-investing" — about half a 25-year panel life. */
-export const REINVEST_AGE = 12.5
 
 interface PlantYear {
   plant: Plant
@@ -133,6 +130,8 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
   )
 
   // ── efficiency vs age ──
+  // the dashed "Age of Plant" split line is a global-only setting (same value for every plant)
+  const reinvestAge = globalSettings(ctx.settings).reinvestAge
   const effSplit = rows.reduce((m, x) => m + x.r.abnormalBelow, 0) / rows.length
   bubbleChart(
     box('bubble'),
@@ -142,10 +141,10 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
         id: x.plant.id,
         name: ctx.displayName(x.plant),
         efficiency: x.total.efficiency!,
-        age: x.r.ageYears ?? ageYears(x.r.startDate, x.lastDate),
+        age: ageYears(x.r.startDate, x.lastDate),
         kWp: x.r.kWp,
       })),
-    { effSplit, ageSplit: REINVEST_AGE, onClick: open },
+    { effSplit, ageSplit: reinvestAge, onClick: open },
   )
   box('bubble').after(bubbleLegend())
 
