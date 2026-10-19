@@ -904,7 +904,7 @@ table.data tr.link:focus-visible {
 
 /* ── settings dialog ───────────────────────────────── */
 dialog.settings {
-  width: min(640px, calc(100vw - 32px));
+  width: min(700px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   padding: 24px 24px 20px;
   border: 0;
@@ -937,9 +937,9 @@ dialog.settings .fields {
 }
 dialog.settings .row {
   display: grid;
-  /* 4th column reserved for the ค่าไฟ "แบ่งครึ่งปี" button so EVERY input keeps the same width and
-     right edge; it stays empty on the other rows (they just leave that slot blank). */
-  grid-template-columns: minmax(0, 1fr) minmax(0, 150px) 48px 72px;
+  /* 4th column reserved for the ค่าไฟ "แบ่งครึ่งปี" button (same width as the input), so EVERY input
+     keeps the same width and right edge; it stays empty on the other rows (they leave that slot blank). */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 150px) 48px minmax(0, 150px);
   align-items: center;
   gap: 8px;
   font-size: 13px;
@@ -1073,14 +1073,14 @@ dialog.settings .tariff-main.readonly {
   background: #f6f8f7;
 }
 dialog.settings .halfyear {
-  justify-self: start;
-  padding: 2px 9px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  width: 100%; /* fills its column, so the button matches the input field's size */
+  padding: 5px 8px;
+  border: 1px solid var(--green);
+  border-radius: 6px;
   background: var(--paper);
   color: var(--green);
   font: inherit;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
@@ -1161,10 +1161,9 @@ dialog.settings .row > span {
   color: var(--gray);
   font: 700 10px var(--font);
   line-height: 1;
-  cursor: help;
+  cursor: pointer;
   vertical-align: middle;
 }
-.help:hover,
 .help.on {
   border-color: var(--green);
   color: var(--green);
@@ -1191,8 +1190,7 @@ dialog.settings .row > span {
   box-shadow: 0 8px 24px rgba(17, 24, 23, 0.35);
   pointer-events: none;
 }
-.help:hover .tip,
-.help:focus-visible .tip,
+/* tooltip opens only when the "?" is clicked (toggles .on) — never on hover/focus */
 .help.on .tip {
   display: block;
 }
