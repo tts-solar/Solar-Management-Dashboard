@@ -166,8 +166,8 @@ function plantPage(plant: Plant, s: PlantSettings, name: string, g: Granularity)
   const lastDate = plant.daily[plant.daily.length - 1]?.date ?? '—'
   const showBill = t.imported > 0
 
-  const kpi = (label: string, value: string): string =>
-    `<div class="rp-kpi"><span class="rp-kpi-l">${esc(label)}</span><span class="rp-kpi-v">${esc(value)}</span></div>`
+  const kpi = (label: string, value: string, note?: string): string =>
+    `<div class="rp-kpi"><span class="rp-kpi-l">${esc(label)}</span><span class="rp-kpi-v">${esc(value)}</span>${note ? `<span class="rp-kpi-n">${esc(note)}</span>` : ''}</div>`
 
   const header = `
     <div class="rp-head">
@@ -180,7 +180,7 @@ function plantPage(plant: Plant, s: PlantSettings, name: string, g: Granularity)
         ${kpi('พลังงานผลิตรวม', `${fmt0(t.produced)} kWh`)}
         ${kpi('ประหยัดรวม', baht(t.saving))}
         ${kpi('ประหยัดเฉลี่ย/ปี', baht(savingPerYear))}
-        ${kpi('ประหยัดล่าสุด', lastRow ? `${baht(lastRow.saving)} (${esc(lastRow.label)})` : '—')}
+        ${kpi('ประหยัดล่าสุด', lastRow ? baht(lastRow.saving) : '—', lastRow?.label)}
       </div>
     </div>`
 

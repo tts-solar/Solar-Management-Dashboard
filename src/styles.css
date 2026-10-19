@@ -1554,6 +1554,11 @@ dialog.export-dlg::backdrop {
   font-size: 0.98rem;
   font-weight: 800;
 }
+.rp-kpi-n {
+  color: var(--gray);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
 .rp-table {
   width: 100%;
   margin-bottom: 20px;
