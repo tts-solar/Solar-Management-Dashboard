@@ -1,6 +1,6 @@
 import type { DailyRow, PeriodRow, Plant } from './types'
 import { dateFromNumber, dayNumber, yearOf } from './aggregate'
-import { PEAK_TO_KWP, type PlantSettings } from './settings'
+import { avgTariff, PEAK_TO_KWP, tariffForMonth, type PlantSettings } from './settings'
 
 /** Settings with every "auto" value worked out for one plant. */
 export interface Resolved extends PlantSettings {
@@ -58,7 +58,7 @@ export function resolve(plant: Plant, s: PlantSettings): Resolved {
   const kWp = s.kWp ?? Math.round((robustPeakKw(plant.daily) / PEAK_TO_KWP) * 10) / 10
   const simulatePerDay = kWp * s.sunHours * s.performanceRatio
   const investment =
-    s.investment ?? Math.round((simulatePerDay * 365 * s.tariff * s.paybackPlanYears) / 1000) * 1000
+    s.investment ?? Math.round((simulatePerDay * 365 * avgTariff(s) * s.paybackPlanYears) / 1000) * 1000
   // no commissioning date set → start from the first day of real data (plant.daily is sorted ascending)
   const startDate = s.startDate ?? plant.daily[0]?.date ?? '2020-10-01'
   return {
@@ -180,8 +180,9 @@ export function bep(plant: Plant, r: Resolved, asOf?: string): BepResult {
     }
     const p = actual.get(date)
     if (p === undefined) projected = true
-    savings += (p ?? avg) * r.tariff
-    simulate += r.simulatePerDay * r.tariff
+    const tariff = tariffForMonth(r, +date.slice(5, 7))
+    savings += (p ?? avg) * tariff
+    simulate += r.simulatePerDay * tariff
     // investment 0 means "unknown" (no data to size it) — never report an instant payback
     if (bepDay === null && r.investment > 0 && savings >= r.investment) bepDay = n - start + 1
   }

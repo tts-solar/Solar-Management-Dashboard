@@ -1,5 +1,5 @@
 import { resolve } from '../data/metrics'
-import { DEFAULT_SETTINGS, GLOBAL_KEY, globalSettings, withDefaults, type PlantSettings, type SettingsMap } from '../data/settings'
+import { DEFAULT_SETTINGS, GLOBAL_KEY, globalSettings, missingSettings, withDefaults, type PlantSettings, type SettingsMap } from '../data/settings'
 import type { Plant } from '../data/types'
 import { confirmDialog } from './confirm'
 
@@ -108,6 +108,11 @@ export function openSettings(o: SettingsPanelOpts): void {
   const h = document.createElement('h2')
   h.textContent = 'ตั้งค่า'
 
+  // "ข้อมูลไม่ครบ" bar: lists the important fields still unfilled for the selected plant (live)
+  const warnBar = document.createElement('div')
+  warnBar.className = 'warn-bar'
+  warnBar.hidden = true
+
   // one "?" help bubble next to a label; hover (desktop) / tap (mobile) / focus (keyboard) shows it
   let openTip: HTMLElement | null = null
   const closeTips = (): void => {
@@ -157,6 +162,61 @@ export function openSettings(o: SettingsPanelOpts): void {
     return row
   }
 
+  // ── ค่าไฟ half-year split (tariff only) ─────────────────
+  // The ค่าไฟ row carries a "แบ่งครึ่งปี" toggle. Off = one price all year (the primary input, stored
+  // as `tariff`). On = reveals a second input for เดือน 7-12 (stored as `tariffH2`); the primary input
+  // then means เดือน 1-6. Blank second half → single price (backward compatible). One row per scope.
+  const h2Inputs = new Map<Scope, HTMLInputElement>()
+  const isSplit = new Map<Scope, () => boolean>()
+  const setSplit = new Map<Scope, (on: boolean) => void>()
+  // Build the ค่าไฟ row (replaces makeRow for the tariff field); registers the primary input like makeRow.
+  const makeTariffRow = (f: Field, scope: Scope, inputs: Map<Key, HTMLInputElement>, units: Map<Key, HTMLElement>): HTMLElement => {
+    const row = document.createElement('label')
+    row.className = 'row tariff-row'
+    const span = document.createElement('span')
+    const toggle = document.createElement('button')
+    toggle.type = 'button'
+    toggle.className = 'halfyear'
+    span.append(document.createTextNode(f.label + ' '), helpBtn(f.tip), toggle)
+
+    const wrap = document.createElement('div')
+    wrap.className = 'tariff-inputs'
+    const mkInput = (): HTMLInputElement => {
+      const i = document.createElement('input')
+      i.type = 'number'
+      i.min = '0'
+      if (f.step) i.step = f.step
+      return i
+    }
+    const h1 = mkInput()
+    inputs.set(f.key, h1)
+    const h2 = mkInput()
+    h2.className = 'h2'
+    h2Inputs.set(scope, h2)
+    const h1Lab = Object.assign(document.createElement('small'), { className: 'half-label', textContent: 'เดือน 1-6' })
+    const h2Lab = Object.assign(document.createElement('small'), { className: 'half-label', textContent: 'เดือน 7-12' })
+    wrap.append(h1Lab, h1, h2Lab, h2)
+
+    const unit = document.createElement('small')
+    unit.textContent = f.unit ?? ''
+    units.set(f.key, unit)
+    row.append(span, wrap, unit)
+
+    let split = false
+    const apply = (on: boolean): void => {
+      split = on
+      row.classList.toggle('split', on)
+      toggle.textContent = on ? 'รวมเป็นค่าเดียว' : 'แบ่งครึ่งปี'
+      toggle.setAttribute('aria-pressed', String(on))
+      if (!on) h2.value = ''
+    }
+    toggle.addEventListener('click', () => apply(!split))
+    apply(false)
+    isSplit.set(scope, () => split)
+    setSplit.set(scope, apply)
+    return row
+  }
+
   // ── tabs ───────────────────────────────────────────────
   const tabs = document.createElement('div')
   tabs.className = 'tabs settings-tabs'
@@ -183,7 +243,8 @@ export function openSettings(o: SettingsPanelOpts): void {
   gGrid.className = 'fields'
   const gInputs = new Map<Key, HTMLInputElement>()
   const gUnits = new Map<Key, HTMLElement>()
-  for (const f of GLOBAL_FIELDS) gGrid.append(makeRow(f, gInputs, gUnits))
+  for (const f of GLOBAL_FIELDS)
+    gGrid.append(f.key === 'tariff' ? makeTariffRow(f, 'global', gInputs, gUnits) : makeRow(f, gInputs, gUnits))
   gPanel.append(gNote, gGrid)
 
   // ── plant panel ────────────────────────────────────────
@@ -191,7 +252,11 @@ export function openSettings(o: SettingsPanelOpts): void {
   pPanel.className = 'panel'
   const pick = document.createElement('select')
   pick.setAttribute('aria-label', 'เลือก Plant')
-  for (const p of o.plants) pick.add(new Option(`${o.displayName(p)} (${p.id})`, p.id, false, p.id === o.plantId))
+  // ⚠ marks a plant whose important fields (kWp + sunHours + ค่าไฟ) are still unfilled (from stored data)
+  for (const p of o.plants) {
+    const mark = missingSettings(o.settings, p.id).length ? '⚠ ' : ''
+    pick.add(new Option(`${mark}${o.displayName(p)} (${p.id})`, p.id, false, p.id === o.plantId))
+  }
   const pickRow = document.createElement('label')
   pickRow.className = 'row pick'
   pickRow.append(Object.assign(document.createElement('span'), { textContent: 'Plant' }), pick)
@@ -223,7 +288,8 @@ export function openSettings(o: SettingsPanelOpts): void {
   sub.className = 'subhead'
   sub.textContent = 'ค่ารวม (เว้นว่าง = ใช้ค่ารวม · กรอก = เฉพาะ Plant นี้)'
   pGrid.append(sub)
-  for (const f of PLANT_OVERRIDE_FIELDS) pGrid.append(makeRow(f, pInputs, pUnits))
+  for (const f of PLANT_OVERRIDE_FIELDS)
+    pGrid.append(f.key === 'tariff' ? makeTariffRow(f, 'plant', pInputs, pUnits) : makeRow(f, pInputs, pUnits))
   pPanel.append(pickRow, pNote, pGrid)
 
   const plantOf = (): Plant => o.plants.find((p) => p.id === pick.value) ?? o.plants[0]
@@ -244,6 +310,12 @@ export function openSettings(o: SettingsPanelOpts): void {
       input.value = show(f, g[f.key])
       input.placeholder = `เริ่มต้น ${show(f, DEFAULT_SETTINGS[f.key])}`
     }
+    // ค่าไฟครึ่งปีหลัง: show the stored second-half price and open the split when one exists
+    const gh2 = h2Inputs.get('global')!
+    const split = typeof g.tariffH2 === 'number' && g.tariffH2 > 0
+    gh2.value = split ? String(g.tariffH2) : ''
+    gh2.placeholder = `เริ่มต้น ${DEFAULT_SETTINGS.tariff}`
+    setSplit.get('global')!(split)
   }
 
   const inputs = (f: Field): HTMLInputElement => pInputs.get(f.key)!
@@ -251,6 +323,11 @@ export function openSettings(o: SettingsPanelOpts): void {
   const loadPlant = (): void => {
     const raw = o.settings[plantOf().id] ?? {}
     for (const f of [...PLANT_FIELDS, ...PLANT_OVERRIDE_FIELDS]) inputs(f).value = show(f, raw[f.key])
+    // ค่าไฟครึ่งปีหลัง override for this plant; open the split only when the plant has its own H2
+    const ph2 = h2Inputs.get('plant')!
+    const split = typeof raw.tariffH2 === 'number' && raw.tariffH2 > 0
+    ph2.value = split ? String(raw.tariffH2) : ''
+    setSplit.get('plant')!(split)
   }
 
   // refresh the grey placeholders + the read-only peak, using the live global tab (so edits reflect)
@@ -264,6 +341,10 @@ export function openSettings(o: SettingsPanelOpts): void {
       inputs(f).placeholder = autoHint(f, plant, raw, gBase) || `เริ่มต้น ${show(f, DEFAULT_SETTINGS[f.key])}`
     }
     for (const f of PLANT_OVERRIDE_FIELDS) inputs(f).placeholder = `ใช้ค่ารวม (${show(f, gBase[f.key])})`
+    // ค่าไฟครึ่งปีหลัง inherits the live global H2 when the plant leaves it blank
+    const gh2 = h2Inputs.get('global')!.value.trim()
+    const gh2n = Number(gh2)
+    h2Inputs.get('plant')!.placeholder = gh2 && Number.isFinite(gh2n) && gh2n > 0 ? `ใช้ค่ารวม (${round(gh2n)})` : 'เดือน 7-12'
     // a date input ignores placeholder → surface the auto start date as grey helper text
     const sd = byKey.startDate
     const sdUnit = pUnits.get('startDate')
@@ -272,12 +353,33 @@ export function openSettings(o: SettingsPanelOpts): void {
     peakOut.value = `≈ ${round(r.peakTestKwhPerDay, 1)}`
   }
 
+  // live completeness: a required field is "filled" if it holds a positive value at the plant OR global
+  // tab right now (mirrors missingSettings over the stored map, but reads the open form so edits reflect)
+  const filledNow = (key: Key): boolean => {
+    const f = byKey[key]
+    const pos = (v: unknown): boolean => typeof v === 'number' && v > 0
+    const pv = pInputs.has(key) ? read(f, pInputs.get(key)!) : undefined
+    const gv = gInputs.has(key) ? read(f, gInputs.get(key)!) : undefined
+    return pos(pv) || pos(gv)
+  }
+  const updateWarn = (): void => {
+    const miss: string[] = []
+    if (!filledNow('kWp')) miss.push(byKey.kWp.label)
+    if (!filledNow('sunHours')) miss.push(byKey.sunHours.label)
+    if (!filledNow('tariff')) miss.push(byKey.tariff.label)
+    warnBar.hidden = miss.length === 0
+    warnBar.textContent = miss.length ? `⚠ ข้อมูลไม่ครบ — ยังไม่ได้กรอก: ${miss.join(', ')}` : ''
+  }
+
   pick.addEventListener('change', () => {
     loadPlant()
     refreshPlant()
+    updateWarn()
   })
+  form.addEventListener('input', updateWarn)
   // editing a global value updates the "ใช้ค่ารวม (…)" hints + the auto peak shown in the plant tab
   for (const f of GLOBAL_FIELDS) gInputs.get(f.key)!.addEventListener('input', refreshPlant)
+  h2Inputs.get('global')!.addEventListener('input', refreshPlant)
 
   // ── actions ────────────────────────────────────────────
   const actions = document.createElement('div')
@@ -326,10 +428,18 @@ export function openSettings(o: SettingsPanelOpts): void {
     return kept
   }
 
+  // keep tariffH2 only when the split is on and the second-half input holds a positive price
+  const addH2 = (scope: Scope, values: Partial<PlantSettings>): void => {
+    const n = Number(h2Inputs.get(scope)!.value.trim())
+    if (isSplit.get(scope)!() && Number.isFinite(n) && n > 0) values.tariffH2 = n
+  }
+
   form.addEventListener('submit', (e) => {
     e.preventDefault()
     const global = collect(gInputs, GLOBAL_FIELDS)
     const values = collect(pInputs, [...PLANT_FIELDS, ...PLANT_OVERRIDE_FIELDS])
+    addH2('global', global)
+    addH2('plant', values)
     finish()
     o.onSave(plantOf().id, values, global)
   })
@@ -359,11 +469,12 @@ export function openSettings(o: SettingsPanelOpts): void {
     if (open === dlg) open = null
   }
 
-  form.append(h, tabs, gPanel, pPanel, actions)
+  form.append(h, warnBar, tabs, gPanel, pPanel, actions)
   dlg.append(form)
   document.body.append(dlg)
   fillGlobal()
   loadPlant()
+  updateWarn()
   setTab('global')
   dlg.showModal()
 }

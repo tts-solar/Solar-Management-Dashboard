@@ -2,7 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { CsvError, parseCsv, parseStamp, plantIdFromFile } from './csv'
 import { dateFromNumber, dayNumber, sumRows, toMonthly, toYearly } from './aggregate'
 import { bep, formatYM, resolve, withMetrics } from './metrics'
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, withDefaults, type PlantSettings } from './settings'
+import {
+  avgTariff,
+  DEFAULT_SETTINGS,
+  GLOBAL_KEY,
+  loadSettings,
+  missingSettings,
+  saveSettings,
+  settingsFor,
+  tariffForMonth,
+  withDefaults,
+  type PlantSettings,
+} from './settings'
 import type { DailyRow, Plant } from './types'
 
 // node:fs is loaded dynamically so the browser tsconfig needs no @types/node
@@ -166,6 +177,53 @@ describe('settings', () => {
     expect(loadSettings(kv)).toEqual({ MH: { tariff: 5 } })
     expect(loadSettings({ getItem: () => '{broken', setItem: () => {} })).toEqual({})
     expect(loadSettings(null)).toEqual({})
+  })
+  it('defaults tariffH2 to null and keeps only a positive override', () => {
+    expect(DEFAULT_SETTINGS.tariffH2).toBeNull()
+    expect(withDefaults({ tariffH2: 6 }).tariffH2).toBe(6)
+    expect(withDefaults({ tariffH2: -1 } as Partial<PlantSettings>).tariffH2).toBeNull()
+    expect(withDefaults({ tariffH2: 0 } as Partial<PlantSettings>).tariffH2).toBeNull()
+  })
+  it('picks the tariff for a month, split or single', () => {
+    const split = withDefaults({ tariff: 4, tariffH2: 6 })
+    expect(tariffForMonth(split, 1)).toBe(4) // Jan → H1
+    expect(tariffForMonth(split, 6)).toBe(4) // Jun → H1
+    expect(tariffForMonth(split, 7)).toBe(6) // Jul → H2
+    expect(tariffForMonth(split, 12)).toBe(6) // Dec → H2
+    const single = withDefaults({ tariff: 5 })
+    expect(tariffForMonth(single, 3)).toBe(5)
+    expect(tariffForMonth(single, 9)).toBe(5) // no H2 → falls back to tariff all year
+  })
+  it('averages the two halves only when split', () => {
+    expect(avgTariff(withDefaults({ tariff: 4, tariffH2: 6 }))).toBe(5)
+    expect(avgTariff(withDefaults({ tariff: 5 }))).toBe(5)
+  })
+  it('flags a plant whose important fields are only defaults, and clears when filled', () => {
+    expect(missingSettings({}, 'MH')).toEqual(['kWp', 'sunHours', 'tariff'])
+    // filled at the plant layer
+    expect(missingSettings({ MH: { kWp: 10, sunHours: 5, tariff: 4 } }, 'MH')).toEqual([])
+    // sunHours + tariff from the global layer, kWp from the plant → complete
+    expect(missingSettings({ [GLOBAL_KEY]: { sunHours: 5, tariff: 4 }, MH: { kWp: 10 } }, 'MH')).toEqual([])
+    // only global tariff → kWp + sunHours still missing
+    expect(missingSettings({ [GLOBAL_KEY]: { tariff: 4 }, MH: {} }, 'MH')).toEqual(['kWp', 'sunHours'])
+  })
+})
+
+describe('half-year tariff in BEP', () => {
+  const daily: DailyRow[] = [day('2025-01-10', 10), day('2025-01-20', 10), day('2025-07-10', 10), day('2025-07-20', 10)]
+  const plant = plantOf(daily)
+  const lastYearSavings = (over: Partial<PlantSettings>): number => {
+    const r = resolve(plant, settingsFor({ T: { kWp: 2, startDate: '2025-01-10', investment: 1, ...over } }, 'T'))
+    const years = bep(plant, r, '2025-07-20').years
+    return years[years.length - 1].savings
+  }
+  it('prices each day by its half of the year — split sits between all-H1 and all-H2', () => {
+    const low = lastYearSavings({ tariff: 4 }) // 4 ฿ all year
+    const high = lastYearSavings({ tariff: 6 }) // 6 ฿ all year
+    const split = lastYearSavings({ tariff: 4, tariffH2: 6 }) // 4 ฿ H1, 6 ฿ H2
+    // H2 days are now priced at 6 (> 4), so the split total must exceed the all-4 total and stay under all-6
+    expect(split).toBeGreaterThan(low)
+    expect(split).toBeLessThan(high)
   })
 })
 

@@ -1,6 +1,6 @@
 import { inPeriod, monthsOf, sumRows } from '../data/aggregate'
 import { ageYears, cumulative, resolve, withMetrics, type MetricRow, type Resolved } from '../data/metrics'
-import { globalSettings, settingsFor, type SettingsMap } from '../data/settings'
+import { globalSettings, missingSettings, settingsFor, type SettingsMap } from '../data/settings'
 import type { Plant } from '../data/types'
 import type { Route } from '../app/router'
 import { C, MONTHS, axisTitle, chartLegend, energy, energyScale, kpiCard, mountChart, pct } from '../charts/common'
@@ -12,6 +12,7 @@ export interface ViewCtx {
   settings: SettingsMap
   displayName(p: Plant): string
   open(route: Route): void
+  onPlantSettings?(): void // open the settings dialog (for the "ข้อมูลไม่ครบ" pill)
 }
 
 interface PlantYear {
@@ -53,6 +54,17 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
     </div>`
   const box = (name: string) => el.querySelector<HTMLElement>(`[data-chart="${name}"]`)!
   const open = (id: string) => ctx.open({ view: 'plant', plant: id, year })
+
+  // ── "ข้อมูลไม่ครบ" pill: plants still missing an important value (kWp + sunHours + ค่าไฟ) ──
+  const incomplete = ctx.plants.filter((p) => missingSettings(ctx.settings, p.id).length > 0)
+  if (incomplete.length) {
+    const pill = document.createElement('button')
+    pill.type = 'button'
+    pill.className = 'incomplete-pill'
+    pill.textContent = `⚠ ${incomplete.length} Plant ข้อมูลไม่ครบ — กรอกข้อมูล`
+    pill.addEventListener('click', () => ctx.onPlantSettings?.())
+    el.prepend(pill)
+  }
 
   // ── cumulative monthly lines, all plants together ──
   const months = [...new Set(rows.flatMap((x) => monthsOf(x.plant.daily, year)))].sort()

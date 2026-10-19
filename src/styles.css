@@ -267,6 +267,32 @@ body {
   flex: 1;
   padding: 8px 24px 16px;
 }
+/* "N Plant ข้อมูลไม่ครบ" banner pill above the overview — click opens settings */
+.incomplete-pill {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 9px 14px;
+  border: 1px solid var(--amber);
+  border-radius: 10px;
+  background: rgba(242, 169, 59, 0.14);
+  color: #8a5a00;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: filter 0.12s ease, box-shadow 0.12s ease;
+}
+.incomplete-pill:hover {
+  filter: brightness(1.03);
+  box-shadow: 0 4px 12px rgba(242, 169, 59, 0.25);
+}
+.incomplete-pill:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
 .page {
   display: grid;
   grid-template-columns: minmax(0, 57fr) minmax(0, 43fr);
@@ -959,6 +985,55 @@ dialog.settings input.readonly {
   background: rgba(17, 24, 23, 0.04);
   color: var(--gray);
   cursor: default;
+}
+
+/* "ข้อมูลไม่ครบ" warning bar at the top of the dialog */
+dialog.settings .warn-bar {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+  background: rgba(242, 169, 59, 0.12);
+  color: #8a5a00;
+  font-size: 12px;
+  font-weight: 700;
+}
+dialog.settings .warn-bar[hidden] {
+  display: none;
+}
+
+/* ค่าไฟ half-year split: "แบ่งครึ่งปี" toggle + the second-half input */
+dialog.settings .halfyear {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--green);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+dialog.settings .halfyear[aria-pressed='true'] {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+dialog.settings .tariff-inputs {
+  display: grid;
+  gap: 4px;
+}
+dialog.settings .tariff-inputs .half-label {
+  display: none;
+  font-size: 10px;
+  color: var(--gray);
+}
+dialog.settings .tariff-row.split .tariff-inputs .half-label {
+  display: block;
+}
+dialog.settings .tariff-row:not(.split) .tariff-inputs .h2 {
+  display: none;
 }
 
 /* "?" help bubble + its tooltip (works on hover, keyboard focus, and mobile tap) */

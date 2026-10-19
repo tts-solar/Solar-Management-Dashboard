@@ -183,7 +183,7 @@ function showSettings(): void {
 
 const last = <T>(a: T[]): T | undefined => a[a.length - 1]
 const displayName = (p: Plant): string => settingsFor(settings, p.id).name ?? p.name
-const viewCtx: ViewCtx = { plants, settings, displayName, open: go }
+const viewCtx: ViewCtx = { plants, settings, displayName, open: go, onPlantSettings: showSettings }
 const allYears = (): string[] => [...new Set(plants.flatMap((p) => yearsOf(p.daily)))].sort()
 
 function render(route: Route): void {

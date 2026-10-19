@@ -7,7 +7,8 @@ export interface PlantSettings {
   peakTestKwhPerDay: number | null // null → simulate × peakTestFactor
   peakTestFactor: number
   abnormalBelow: number // efficiency fraction under which a period is flagged
-  tariff: number // THB per kWh saved
+  tariff: number // THB per kWh saved (months 1-6, or the whole year when tariffH2 is null)
+  tariffH2: number | null // THB per kWh for months 7-12; null → tariff applies all year (no half-year split)
   startDate: string | null // commissioning date YYYY-MM-DD; null → first day of real data (auto)
   investment: number | null // THB; null → sized so the plan pays back in paybackPlanYears
   paybackPlanYears: number
@@ -23,6 +24,7 @@ export const DEFAULT_SETTINGS: PlantSettings = {
   peakTestFactor: 0.9,
   abnormalBelow: 0.7,
   tariff: 4.5,
+  tariffH2: null,
   startDate: null,
   investment: null,
   paybackPlanYears: 7,
@@ -44,7 +46,7 @@ export const GLOBAL_KEY = '__global__'
 
 const STORAGE_KEY = 'solar-dashboard:settings:v1'
 const NUMERIC = ['sunHours', 'performanceRatio', 'peakTestFactor', 'abnormalBelow', 'tariff', 'paybackPlanYears', 'reinvestAge'] as const
-const OPTIONAL = ['kWp', 'peakTestKwhPerDay', 'investment'] as const
+const OPTIONAL = ['kWp', 'peakTestKwhPerDay', 'investment', 'tariffH2'] as const
 
 const positive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
 
@@ -109,3 +111,33 @@ export const globalSettings = (map: SettingsMap): PlantSettings => withDefaults(
 /** Resolve one plant through all three layers: per-plant override → global → built-in default/auto. */
 export const settingsFor = (map: SettingsMap, plantId: string): PlantSettings =>
   withDefaults(map[plantId], globalSettings(map))
+
+/**
+ * Electricity price for a calendar month (1–12). The first half of the year uses `tariff`; the second
+ * half uses `tariffH2` when a half-year split is set, otherwise `tariff` (single price all year).
+ */
+export const tariffForMonth = (s: PlantSettings, month: number): number =>
+  month <= 6 ? s.tariff : (s.tariffH2 ?? s.tariff)
+
+/** Average yearly price: the mean of the two halves when split, otherwise the single `tariff`. */
+export const avgTariff = (s: PlantSettings): number =>
+  s.tariffH2 != null ? (s.tariff + s.tariffH2) / 2 : s.tariff
+
+/**
+ * Fields a plant should have real values for before its numbers are trustworthy — the ones with no
+ * meaningful universal default: installed size, peak sun hours and the electricity price.
+ */
+export const REQUIRED_FIELDS = ['kWp', 'sunHours', 'tariff'] as const
+export type RequiredField = (typeof REQUIRED_FIELDS)[number]
+
+/**
+ * Which required fields are still unfilled for a plant — i.e. no real value at the per-plant OR the
+ * global layer, so the built-in fallback default is all that applies. Reads the RAW map (not the
+ * resolved settings, which can no longer tell a real value from a default). Empty array = complete.
+ */
+export function missingSettings(map: SettingsMap, plantId: string): RequiredField[] {
+  const plant = map[plantId] ?? {}
+  const global = map[GLOBAL_KEY] ?? {}
+  const filled = (f: RequiredField): boolean => positive(plant[f]) || positive(global[f])
+  return REQUIRED_FIELDS.filter((f) => !filled(f))
+}
