@@ -9,6 +9,7 @@ export interface PlantSettings {
   abnormalBelow: number // efficiency fraction under which a period is flagged
   tariff: number // THB per kWh saved
   startDate: string | null // commissioning date YYYY-MM-DD; null → first day of real data (auto)
+  ageYears: number | null // display age override in years; null → computed from startDate (auto). Display/plot only, never changes payback.
   investment: number | null // THB; null → sized so the plan pays back in paybackPlanYears
   paybackPlanYears: number
 }
@@ -23,6 +24,7 @@ export const DEFAULT_SETTINGS: PlantSettings = {
   abnormalBelow: 0.7,
   tariff: 4.5,
   startDate: null,
+  ageYears: null,
   investment: null,
   paybackPlanYears: 7,
 }
@@ -42,7 +44,7 @@ export const GLOBAL_KEY = '__global__'
 
 const STORAGE_KEY = 'solar-dashboard:settings:v1'
 const NUMERIC = ['sunHours', 'performanceRatio', 'peakTestFactor', 'abnormalBelow', 'tariff', 'paybackPlanYears'] as const
-const OPTIONAL = ['kWp', 'peakTestKwhPerDay', 'investment'] as const
+const OPTIONAL = ['kWp', 'peakTestKwhPerDay', 'ageYears', 'investment'] as const
 
 const positive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
 

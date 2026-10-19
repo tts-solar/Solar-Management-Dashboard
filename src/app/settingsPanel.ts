@@ -1,4 +1,4 @@
-import { resolve } from '../data/metrics'
+import { ageYears, formatYM, resolve } from '../data/metrics'
 import { DEFAULT_SETTINGS, GLOBAL_KEY, globalSettings, withDefaults, type PlantSettings, type SettingsMap } from '../data/settings'
 import type { Plant } from '../data/types'
 import { confirmDialog } from './confirm'
@@ -37,6 +37,7 @@ const FIELDS: Field[] = [
   // per-plant
   { key: 'name', label: 'ชื่อที่แสดง', kind: 'text', scope: 'plant', tip: 'ชื่อที่โชว์บน dashboard แทนรหัส Plant (เว้นว่าง = ใช้รหัส)' },
   { key: 'startDate', label: 'วันเริ่มใช้งาน', kind: 'date', scope: 'plant', tip: 'วันที่ระบบเริ่มผลิตไฟ ใช้คำนวณอายุและการคืนทุน' },
+  { key: 'ageYears', label: 'อายุระบบ (ปี)', kind: 'number', unit: 'ปี', step: '0.5', scope: 'plant', tip: 'ตั้งอายุระบบที่จะแสดงบนการ์ดและกราฟเอง (เว้นว่าง = คำนวณจากวันเริ่มใช้งาน) ไม่กระทบการคำนวณจุดคืนทุน' },
   { key: 'kWp', label: 'ขนาดติดตั้ง', kind: 'number', unit: 'kWp', step: '0.1', scope: 'plant', tip: 'กำลังผลิตสูงสุดของแผงที่ติดตั้ง เป็นตัวหารหลักของค่า Efficiency' },
   { key: 'investment', label: 'เงินลงทุน', kind: 'number', unit: '฿', step: '1000', scope: 'plant', tip: 'เงินที่ลงทุนติดตั้งระบบนี้ ใช้คำนวณระยะคืนทุน' },
   { key: 'peakTestFactor', label: 'Peak Test เทียบ Simulate', kind: 'percent', unit: '%', step: '1', scope: 'plant', tip: '% ผลวัดจริงเทียบกับค่าที่จำลองไว้ ของ Plant นี้' },
@@ -84,6 +85,8 @@ function autoHint(f: Field, plant: Plant, raw: Partial<PlantSettings>, base: Pla
       return `อัตโนมัติ ≈ ${Math.round(r.investment).toLocaleString('en-US')}`
     case 'startDate':
       return r.startDate // first day of real data when left blank
+    case 'ageYears':
+      return `อัตโนมัติ ≈ ${formatYM(ageYears(r.startDate, plant.daily[plant.daily.length - 1]?.date ?? r.startDate))}` // computed from the commissioning date
     default:
       return ''
   }

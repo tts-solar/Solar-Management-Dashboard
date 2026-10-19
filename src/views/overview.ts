@@ -142,7 +142,7 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
         id: x.plant.id,
         name: ctx.displayName(x.plant),
         efficiency: x.total.efficiency!,
-        age: ageYears(x.r.startDate, x.lastDate),
+        age: x.r.ageYears ?? ageYears(x.r.startDate, x.lastDate),
         kWp: x.r.kWp,
       })),
     { effSplit, ageSplit: REINVEST_AGE, onClick: open },
