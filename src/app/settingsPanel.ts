@@ -39,7 +39,7 @@ const FIELDS: Field[] = [
   { key: 'name', label: 'ชื่อที่แสดง', kind: 'text', scope: 'plant', tip: 'ชื่อที่โชว์บน dashboard แทนรหัส Plant (เว้นว่าง = ใช้รหัส)' },
   { key: 'startDate', label: 'วันเริ่มใช้งาน', kind: 'date', scope: 'plant', tip: 'วันที่ระบบเริ่มผลิตไฟ ใช้คำนวณอายุและการคืนทุน' },
   { key: 'kWp', label: 'ขนาดติดตั้ง', kind: 'number', unit: 'kWp', step: '0.1', scope: 'plant', tip: 'กำลังผลิตสูงสุดของแผงที่ติดตั้ง เป็นตัวหารหลักของค่า Efficiency' },
-  { key: 'investment', label: 'เงินลงทุน', kind: 'number', unit: '฿', step: '1000', scope: 'plant', tip: 'เงินที่ลงทุนติดตั้งระบบนี้ ใช้คำนวณระยะคืนทุน' },
+  { key: 'investment', label: 'เงินลงทุน', kind: 'number', unit: '฿', step: '1', scope: 'plant', tip: 'เงินที่ลงทุนติดตั้งระบบนี้ ใช้คำนวณระยะคืนทุน' },
   { key: 'peakTestFactor', label: 'Peak Test เทียบ Simulate', kind: 'percent', unit: '%', step: '1', scope: 'plant', tip: '% ผลวัดจริงเทียบกับค่าที่จำลองไว้ ของ Plant นี้' },
   // system-wide (also shown as overrides in the plant tab)
   { key: 'performanceRatio', label: 'Performance Ratio', kind: 'percent', unit: '%', step: '1', scope: 'global', tip: '% ที่ระบบผลิตได้จริงเทียบกับทฤษฎี (รวมการสูญเสีย) ปกติ 75–85%' },
