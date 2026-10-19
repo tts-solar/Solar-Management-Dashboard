@@ -198,16 +198,13 @@ export function openSettings(o: SettingsPanelOpts): void {
     const h2 = mkInput()
     h2Inputs.set(scope, h2)
 
-    // right group: unit + the toggle button
+    // unit + the toggle button sit in the row's own unit / button columns (shared with makeRow)
     const unit = document.createElement('small')
     unit.textContent = f.unit ?? ''
     units.set(f.key, unit)
     const openBtn = document.createElement('button')
     openBtn.type = 'button'
     openBtn.className = 'halfyear'
-    const right = document.createElement('div')
-    right.className = 'tariff-right'
-    right.append(unit, openBtn)
 
     // popup: the two half-year inputs + clear / ok
     const pop = document.createElement('div')
@@ -233,7 +230,7 @@ export function openSettings(o: SettingsPanelOpts): void {
       popActions,
     )
 
-    row.append(span, display, right, pop)
+    row.append(span, display, unit, openBtn, pop)
 
     let split = false
     const sync = (): void => {

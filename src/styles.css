@@ -904,7 +904,7 @@ table.data tr.link:focus-visible {
 
 /* ── settings dialog ───────────────────────────────── */
 dialog.settings {
-  width: min(560px, calc(100vw - 32px));
+  width: min(640px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   padding: 24px 24px 20px;
   border: 0;
@@ -937,7 +937,9 @@ dialog.settings .fields {
 }
 dialog.settings .row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 150px) 48px;
+  /* 4th column reserved for the ค่าไฟ "แบ่งครึ่งปี" button so EVERY input keeps the same width and
+     right edge; it stays empty on the other rows (they just leave that slot blank). */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 150px) 48px 72px;
   align-items: center;
   gap: 8px;
   font-size: 13px;
@@ -1016,6 +1018,9 @@ dialog.settings .actions .danger:hover {
   dialog.settings > form > .row {
     grid-template-columns: minmax(0, 1fr) 40px;
   }
+  dialog.settings .tariff-row {
+    grid-template-columns: minmax(0, 1fr) 40px auto;
+  }
   dialog.settings .row > span {
     grid-column: 1 / -1;
   }
@@ -1057,21 +1062,18 @@ dialog.settings input.readonly {
   cursor: default;
 }
 
-/* ค่าไฟ half-year split: single price + a "แบ่งครึ่งปี" button that opens a 2-input popup */
+/* ค่าไฟ half-year split: single price + a "แบ่งครึ่งปี" button that opens a 2-input popup.
+   The row shares the standard .row grid (label | input | unit | button) so its input lines up
+   with every other field; the button sits in the shared 4th column. */
 dialog.settings .tariff-row {
   position: relative; /* anchors the popup under the button */
-  grid-template-columns: minmax(0, 1fr) minmax(0, 120px) auto;
-}
-dialog.settings .tariff-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 dialog.settings .tariff-main.readonly {
   color: var(--gray);
   background: #f6f8f7;
 }
 dialog.settings .halfyear {
+  justify-self: start;
   padding: 2px 9px;
   border: 1px solid var(--line);
   border-radius: 999px;
