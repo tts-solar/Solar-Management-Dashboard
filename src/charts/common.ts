@@ -23,19 +23,28 @@ export const fmt1 = (n: number): string => N1.format(n)
 export const pct = (fraction: number | null, digits = 1): string =>
   fraction === null ? '–' : `${nf(digits).format(fraction * 100)}%`
 
+/**
+ * Single source of truth for the kWh→MWh→GWh step points, so a KPI card (`energy`) and a
+ * chart axis (`energyScale`) always pick the SAME unit for the same magnitude — no more
+ * "card says kWh while the axis says MWh". Ordered high→low; first threshold met wins.
+ */
+const ENERGY_UNITS: { at: number; unit: string; div: number }[] = [
+  { at: 1e6, unit: 'GWh', div: 1e6 },
+  { at: 1e5, unit: 'MWh', div: 1e3 },
+  { at: 0, unit: 'kWh', div: 1 },
+]
+const energyUnit = (magnitude: number): { unit: string; div: number } =>
+  ENERGY_UNITS.find((u) => Math.abs(magnitude) >= u.at)!
+
 /** Energy with a unit that keeps the number short: 85,792 kWh · 200.4 MWh · 1.2 GWh. */
 export function energy(kwh: number): string {
-  const a = Math.abs(kwh)
-  if (a >= 1e6) return `${fmt1(kwh / 1e6)} GWh`
-  if (a >= 1e5) return `${fmt1(kwh / 1e3)} MWh`
-  return `${fmt0(kwh)} kWh`
+  const { unit, div } = energyUnit(kwh)
+  return `${div === 1 ? fmt0(kwh) : fmt1(kwh / div)} ${unit}`
 }
 
 /** Pick one axis unit for a whole series so every point is scaled the same way. */
 export function energyScale(maxKwh: number): { unit: string; div: number } {
-  if (maxKwh >= 1e6) return { unit: 'GWh', div: 1e6 }
-  if (maxKwh >= 1e4) return { unit: 'MWh', div: 1e3 }
-  return { unit: 'kWh', div: 1 }
+  return energyUnit(maxKwh)
 }
 
 export const baht = (n: number): string => `${fmt0(n)} ฿`
