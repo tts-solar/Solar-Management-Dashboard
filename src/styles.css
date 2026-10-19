@@ -177,7 +177,102 @@ body {
 
 /* ── header ─────────────────────────────────────────── */
 .top {
+  position: relative; /* anchors the top-right bell */
   padding: 14px 24px 6px;
+}
+/* header bell: "ข้อมูลไม่ครบ" notifier (replaces the old overview pill + dialog warning bar) */
+.bell-wrap {
+  position: absolute;
+  top: 12px;
+  right: 24px;
+}
+.bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--gray);
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.bell svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+.bell.has {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.bell-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.bell-badge[hidden] {
+  display: none;
+}
+.bell-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: 260px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+.bell-menu[hidden] {
+  display: none;
+}
+.bell-head {
+  padding: 4px 8px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.bell-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.bell-item:hover {
+  background: rgba(17, 24, 23, 0.05);
+}
+.bell-item-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.bell-item-miss {
+  font-size: 11px;
+  color: var(--gray);
 }
 .head-row {
   display: flex;
@@ -189,6 +284,7 @@ body {
 .page-title {
   overflow-wrap: anywhere;
   margin: 0 0 8px;
+  padding-right: 52px; /* clears the top-right bell */
   font-size: clamp(1.6rem, 2.8vw, 2.4rem);
   font-weight: 900;
   font-style: italic;
@@ -267,32 +363,6 @@ body {
   flex: 1;
   padding: 8px 24px 16px;
 }
-/* "N Plant ข้อมูลไม่ครบ" banner pill above the overview — click opens settings */
-.incomplete-pill {
-  display: block;
-  width: 100%;
-  margin: 0 0 12px;
-  padding: 9px 14px;
-  border: 1px solid var(--amber);
-  border-radius: 10px;
-  background: rgba(242, 169, 59, 0.14);
-  color: #8a5a00;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  text-align: left;
-  cursor: pointer;
-  transition: filter 0.12s ease, box-shadow 0.12s ease;
-}
-.incomplete-pill:hover {
-  filter: brightness(1.03);
-  box-shadow: 0 4px 12px rgba(242, 169, 59, 0.25);
-}
-.incomplete-pill:focus-visible {
-  outline: 2px solid var(--amber);
-  outline-offset: 2px;
-}
-
 .page {
   display: grid;
   grid-template-columns: minmax(0, 57fr) minmax(0, 43fr);
@@ -987,25 +1057,22 @@ dialog.settings input.readonly {
   cursor: default;
 }
 
-/* "ข้อมูลไม่ครบ" warning bar at the top of the dialog */
-dialog.settings .warn-bar {
-  margin: 0 0 12px;
-  padding: 8px 12px;
-  border: 1px solid var(--amber);
-  border-radius: 8px;
-  background: rgba(242, 169, 59, 0.12);
-  color: #8a5a00;
-  font-size: 12px;
-  font-weight: 700;
+/* ค่าไฟ half-year split: single price + a "แบ่งครึ่งปี" button that opens a 2-input popup */
+dialog.settings .tariff-row {
+  position: relative; /* anchors the popup under the button */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 120px) auto;
 }
-dialog.settings .warn-bar[hidden] {
-  display: none;
+dialog.settings .tariff-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
-
-/* ค่าไฟ half-year split: "แบ่งครึ่งปี" toggle + the second-half input */
+dialog.settings .tariff-main.readonly {
+  color: var(--gray);
+  background: #f6f8f7;
+}
 dialog.settings .halfyear {
-  margin-left: 6px;
-  padding: 1px 8px;
+  padding: 2px 9px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--paper);
@@ -1013,27 +1080,66 @@ dialog.settings .halfyear {
   font: inherit;
   font-size: 10px;
   font-weight: 700;
+  white-space: nowrap;
   cursor: pointer;
 }
-dialog.settings .halfyear[aria-pressed='true'] {
+dialog.settings .halfyear.on {
   border-color: var(--green);
   background: var(--green);
   color: #fff;
 }
-dialog.settings .tariff-inputs {
-  display: grid;
-  gap: 4px;
+dialog.settings .hy-popup {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  width: 240px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
 }
-dialog.settings .tariff-inputs .half-label {
+dialog.settings .hy-popup[hidden] {
   display: none;
-  font-size: 10px;
+}
+dialog.settings .hy-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+dialog.settings .hy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 96px);
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+dialog.settings .hy-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+dialog.settings .hy-actions button {
+  padding: 5px 12px;
+  border: 1.5px solid var(--green);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+dialog.settings .hy-actions .ghost {
+  border-color: var(--line);
+  background: var(--paper);
   color: var(--gray);
 }
-dialog.settings .tariff-row.split .tariff-inputs .half-label {
-  display: block;
-}
-dialog.settings .tariff-row:not(.split) .tariff-inputs .h2 {
-  display: none;
+dialog.settings .hy-actions .primary {
+  background: var(--green);
+  color: #fff;
 }
 
 /* "?" help bubble + its tooltip (works on hover, keyboard focus, and mobile tap) */

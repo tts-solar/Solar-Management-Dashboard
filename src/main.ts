@@ -7,7 +7,7 @@ import { Chart, registerables } from 'chart.js'
 import { TreemapController, TreemapElement } from 'chartjs-chart-treemap'
 
 import { monthsOf, yearsOf } from './data/aggregate'
-import { clearSettings, GLOBAL_KEY, loadSettings, saveSettings, settingsFor, type SettingsMap } from './data/settings'
+import { clearSettings, GLOBAL_KEY, loadSettings, missingSettings, saveSettings, settingsFor, type PlantSettings, type SettingsMap } from './data/settings'
 import type { Plant } from './data/types'
 import { go, onRoute, toHash, type Route } from './app/router'
 import { createShell, type Crumb } from './app/shell'
@@ -48,7 +48,7 @@ let current: Route = { view: 'overview' }
 
 const shell = createShell(document.getElementById('app')!, {
   onImport: (files) => openImport(files),
-  onPlantSettings: () => showSettings(),
+  onPlantSettings: (id) => showSettings(id),
   onDownload: () => saveOrDownload(),
   onClear: () => void clearData(),
   // Demo only, and only once the blank offline build is baked in (build:offline runs before build:demo).
@@ -154,12 +154,12 @@ function commitImport(ok: Imported[]): void {
   else go(target)
 }
 
-function showSettings(): void {
+function showSettings(plantId?: string): void {
   if (!plants.length) return shell.toast('ยังไม่มี Plant — นำเข้าไฟล์ CSV ก่อน', 'error')
   openSettings({
     plants,
     settings,
-    plantId: current.view === 'plant' ? current.plant : plants[0].id,
+    plantId: plantId ?? (current.view === 'plant' ? current.plant : plants[0].id),
     displayName,
     onSave: (id, values, global) => {
       // keep {} (not delete) so a reset also overrides a downloaded file's embedded settings
@@ -183,13 +183,29 @@ function showSettings(): void {
 
 const last = <T>(a: T[]): T | undefined => a[a.length - 1]
 const displayName = (p: Plant): string => settingsFor(settings, p.id).name ?? p.name
-const viewCtx: ViewCtx = { plants, settings, displayName, open: go, onPlantSettings: showSettings }
+const viewCtx: ViewCtx = { plants, settings, displayName, open: go }
 const allYears = (): string[] => [...new Set(plants.flatMap((p) => yearsOf(p.daily)))].sort()
+
+// Thai labels for the important fields the bell reports as missing (kWp + sunHours + tariff)
+const MISSING_LABELS: Partial<Record<keyof PlantSettings, string>> = {
+  kWp: 'ขนาดติดตั้ง',
+  sunHours: 'ชั่วโมงแดดต่อวัน',
+  tariff: 'ค่าไฟ',
+}
+
+// refresh the header bell from the current plants/settings (plants missing an important value)
+function refreshBell(): void {
+  const items = plants
+    .map((p) => ({ id: p.id, name: displayName(p), missing: missingSettings(settings, p.id).map((k) => MISSING_LABELS[k] ?? k) }))
+    .filter((x) => x.missing.length > 0)
+  shell.setIncomplete(items)
+}
 
 function render(route: Route): void {
   current = route
   destroyCharts()
   shell.setActive('dashboard')
+  refreshBell()
   if (route.view === 'overview') return renderOverview(route.year)
   const plant = plants.find((p) => p.id === route.plant)
   const years = plant ? yearsOf(plant.daily) : []

@@ -108,17 +108,15 @@ export function openSettings(o: SettingsPanelOpts): void {
   const h = document.createElement('h2')
   h.textContent = 'ตั้งค่า'
 
-  // "ข้อมูลไม่ครบ" bar: lists the important fields still unfilled for the selected plant (live)
-  const warnBar = document.createElement('div')
-  warnBar.className = 'warn-bar'
-  warnBar.hidden = true
-
   // one "?" help bubble next to a label; hover (desktop) / tap (mobile) / focus (keyboard) shows it
   let openTip: HTMLElement | null = null
   const closeTips = (): void => {
     openTip?.classList.remove('on')
     openTip = null
   }
+  // open half-year popups (one per tariff row); any dialog-level click closes them
+  const popups: HTMLElement[] = []
+  const closePopups = (): void => popups.forEach((p) => (p.hidden = true))
   const helpBtn = (tip: string): HTMLButtonElement => {
     const b = document.createElement('button')
     b.type = 'button'
@@ -142,7 +140,10 @@ export function openSettings(o: SettingsPanelOpts): void {
     })
     return b
   }
-  dlg.addEventListener('click', closeTips) // tap anywhere else closes an open tooltip
+  dlg.addEventListener('click', () => {
+    closeTips() // tap anywhere else closes an open tooltip
+    closePopups() // ...and any open half-year popup
+  })
 
   // a labelled field row (label + "?" + input + unit); registers the input into `inputs`
   const makeRow = (f: Field, inputs: Map<Key, HTMLInputElement>, units: Map<Key, HTMLElement>): HTMLElement => {
@@ -163,24 +164,28 @@ export function openSettings(o: SettingsPanelOpts): void {
   }
 
   // ── ค่าไฟ half-year split (tariff only) ─────────────────
-  // The ค่าไฟ row carries a "แบ่งครึ่งปี" toggle. Off = one price all year (the primary input, stored
-  // as `tariff`). On = reveals a second input for เดือน 7-12 (stored as `tariffH2`); the primary input
-  // then means เดือน 1-6. Blank second half → single price (backward compatible). One row per scope.
+  // The ค่าไฟ row shows one editable price with a "แบ่งครึ่งปี" button to its right. The button opens a
+  // small popup with two inputs — เดือน 1-6 (stored as `tariff`) and เดือน 7-12 (stored as `tariffH2`).
+  // While split, the main field turns into a read-only "H1 / H2" summary. Blank H2 → one price all year
+  // (backward compatible). The two popup inputs are the source of truth and always live in the DOM, so
+  // collect()/fillGlobal()/loadPlant() keep reading them via `inputs`/`h2Inputs`. One row per scope.
   const h2Inputs = new Map<Scope, HTMLInputElement>()
   const isSplit = new Map<Scope, () => boolean>()
   const setSplit = new Map<Scope, (on: boolean) => void>()
-  // Build the ค่าไฟ row (replaces makeRow for the tariff field); registers the primary input like makeRow.
+  const syncDisplays = new Map<Scope, () => void>() // push H1 value/placeholder onto the visible field
   const makeTariffRow = (f: Field, scope: Scope, inputs: Map<Key, HTMLInputElement>, units: Map<Key, HTMLElement>): HTMLElement => {
     const row = document.createElement('label')
     row.className = 'row tariff-row'
     const span = document.createElement('span')
-    const toggle = document.createElement('button')
-    toggle.type = 'button'
-    toggle.className = 'halfyear'
-    span.append(document.createTextNode(f.label + ' '), helpBtn(f.tip), toggle)
+    span.append(document.createTextNode(f.label + ' '), helpBtn(f.tip))
 
-    const wrap = document.createElement('div')
-    wrap.className = 'tariff-inputs'
+    // visible field: single editable price when not split, read-only "H1 / H2" summary when split
+    const display = document.createElement('input')
+    display.type = 'text'
+    display.inputMode = 'decimal'
+    display.className = 'tariff-main'
+
+    // source-of-truth number inputs (kept inside the popup; always in the DOM)
     const mkInput = (): HTMLInputElement => {
       const i = document.createElement('input')
       i.type = 'number'
@@ -191,29 +196,94 @@ export function openSettings(o: SettingsPanelOpts): void {
     const h1 = mkInput()
     inputs.set(f.key, h1)
     const h2 = mkInput()
-    h2.className = 'h2'
     h2Inputs.set(scope, h2)
-    const h1Lab = Object.assign(document.createElement('small'), { className: 'half-label', textContent: 'เดือน 1-6' })
-    const h2Lab = Object.assign(document.createElement('small'), { className: 'half-label', textContent: 'เดือน 7-12' })
-    wrap.append(h1Lab, h1, h2Lab, h2)
 
+    // right group: unit + the toggle button
     const unit = document.createElement('small')
     unit.textContent = f.unit ?? ''
     units.set(f.key, unit)
-    row.append(span, wrap, unit)
+    const openBtn = document.createElement('button')
+    openBtn.type = 'button'
+    openBtn.className = 'halfyear'
+    const right = document.createElement('div')
+    right.className = 'tariff-right'
+    right.append(unit, openBtn)
+
+    // popup: the two half-year inputs + clear / ok
+    const pop = document.createElement('div')
+    pop.className = 'hy-popup'
+    pop.hidden = true
+    pop.addEventListener('click', (e) => e.stopPropagation()) // clicks inside must not close it
+    popups.push(pop)
+    const hyRow = (label: string, input: HTMLInputElement): HTMLElement => {
+      const r = document.createElement('label')
+      r.className = 'hy-row'
+      r.append(Object.assign(document.createElement('span'), { textContent: label }), input)
+      return r
+    }
+    const clearBtn = Object.assign(document.createElement('button'), { type: 'button', className: 'ghost', textContent: 'ล้างครึ่งปี' })
+    const okBtn = Object.assign(document.createElement('button'), { type: 'button', className: 'primary', textContent: 'ตกลง' })
+    const popActions = document.createElement('div')
+    popActions.className = 'hy-actions'
+    popActions.append(clearBtn, okBtn)
+    pop.append(
+      Object.assign(document.createElement('p'), { className: 'hy-title', textContent: 'ค่าไฟแบ่งครึ่งปี (฿/kWh)' }),
+      hyRow('เดือน 1-6', h1),
+      hyRow('เดือน 7-12', h2),
+      popActions,
+    )
+
+    row.append(span, display, right, pop)
 
     let split = false
-    const apply = (on: boolean): void => {
-      split = on
-      row.classList.toggle('split', on)
-      toggle.textContent = on ? 'รวมเป็นค่าเดียว' : 'แบ่งครึ่งปี'
-      toggle.setAttribute('aria-pressed', String(on))
-      if (!on) h2.value = ''
+    const sync = (): void => {
+      openBtn.textContent = split ? 'แก้ครึ่งปี' : 'แบ่งครึ่งปี'
+      openBtn.classList.toggle('on', split)
+      row.classList.toggle('split', split)
+      if (split) {
+        display.readOnly = true
+        display.classList.add('readonly')
+        display.value = `${h1.value || '—'} / ${h2.value}`
+      } else {
+        display.readOnly = false
+        display.classList.remove('readonly')
+        display.value = h1.value
+        display.placeholder = h1.placeholder
+      }
     }
-    toggle.addEventListener('click', () => apply(!split))
-    apply(false)
+    // editing the single price flows into H1, then bubbles so refreshPlant()'s listener recomputes hints
+    display.addEventListener('input', () => {
+      if (split) return
+      h1.value = display.value
+      h1.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    openBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const wasOpen = !pop.hidden
+      closePopups()
+      pop.hidden = wasOpen
+    })
+    okBtn.addEventListener('click', () => {
+      const v = Number(h2.value.trim())
+      split = h2.value.trim() !== '' && Number.isFinite(v) && v > 0
+      sync()
+      pop.hidden = true
+      h1.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    clearBtn.addEventListener('click', () => {
+      h2.value = ''
+      split = false
+      sync()
+      pop.hidden = true
+      h1.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
     isSplit.set(scope, () => split)
-    setSplit.set(scope, apply)
+    setSplit.set(scope, (on) => {
+      split = on
+      sync()
+    })
+    syncDisplays.set(scope, sync)
     return row
   }
 
@@ -345,6 +415,7 @@ export function openSettings(o: SettingsPanelOpts): void {
     const gh2 = h2Inputs.get('global')!.value.trim()
     const gh2n = Number(gh2)
     h2Inputs.get('plant')!.placeholder = gh2 && Number.isFinite(gh2n) && gh2n > 0 ? `ใช้ค่ารวม (${round(gh2n)})` : 'เดือน 7-12'
+    syncDisplays.get('plant')?.() // reflect the freshly-set H1 placeholder on the visible field
     // a date input ignores placeholder → surface the auto start date as grey helper text
     const sd = byKey.startDate
     const sdUnit = pUnits.get('startDate')
@@ -353,30 +424,10 @@ export function openSettings(o: SettingsPanelOpts): void {
     peakOut.value = `≈ ${round(r.peakTestKwhPerDay, 1)}`
   }
 
-  // live completeness: a required field is "filled" if it holds a positive value at the plant OR global
-  // tab right now (mirrors missingSettings over the stored map, but reads the open form so edits reflect)
-  const filledNow = (key: Key): boolean => {
-    const f = byKey[key]
-    const pos = (v: unknown): boolean => typeof v === 'number' && v > 0
-    const pv = pInputs.has(key) ? read(f, pInputs.get(key)!) : undefined
-    const gv = gInputs.has(key) ? read(f, gInputs.get(key)!) : undefined
-    return pos(pv) || pos(gv)
-  }
-  const updateWarn = (): void => {
-    const miss: string[] = []
-    if (!filledNow('kWp')) miss.push(byKey.kWp.label)
-    if (!filledNow('sunHours')) miss.push(byKey.sunHours.label)
-    if (!filledNow('tariff')) miss.push(byKey.tariff.label)
-    warnBar.hidden = miss.length === 0
-    warnBar.textContent = miss.length ? `⚠ ข้อมูลไม่ครบ — ยังไม่ได้กรอก: ${miss.join(', ')}` : ''
-  }
-
   pick.addEventListener('change', () => {
     loadPlant()
     refreshPlant()
-    updateWarn()
   })
-  form.addEventListener('input', updateWarn)
   // editing a global value updates the "ใช้ค่ารวม (…)" hints + the auto peak shown in the plant tab
   for (const f of GLOBAL_FIELDS) gInputs.get(f.key)!.addEventListener('input', refreshPlant)
   h2Inputs.get('global')!.addEventListener('input', refreshPlant)
@@ -469,12 +520,11 @@ export function openSettings(o: SettingsPanelOpts): void {
     if (open === dlg) open = null
   }
 
-  form.append(h, warnBar, tabs, gPanel, pPanel, actions)
+  form.append(h, tabs, gPanel, pPanel, actions)
   dlg.append(form)
   document.body.append(dlg)
   fillGlobal()
   loadPlant()
-  updateWarn()
   setTab('global')
   dlg.showModal()
 }

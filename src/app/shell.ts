@@ -5,8 +5,8 @@ import { toHash, type Route } from './router'
 export interface ShellHandlers {
   /** Open the centered import dialog; `files` pre-fills it (e.g. a drag-drop), else it opens empty. */
   onImport(files?: File[]): void
-  /** Open the per-plant settings dialog. */
-  onPlantSettings(): void
+  /** Open the per-plant settings dialog; `plantId` preselects that plant (e.g. from the bell menu). */
+  onPlantSettings(plantId?: string): void
   /** Save a portable copy of the loaded data (both builds). */
   onDownload(): void
   /** Demo only: hand the client a blank copy of the offline app (absent in the offline build itself). */
@@ -32,6 +32,13 @@ export interface Picker {
   onChange(value: string): void
 }
 
+/** A plant whose important fields are still unfilled, listed under the header bell. */
+export interface IncompletePlant {
+  id: string
+  name: string
+  missing: string[] // Thai labels of the missing fields (e.g. "ขนาดติดตั้ง", "ค่าไฟ")
+}
+
 /** Which sidebar item is highlighted. Dashboard is the only page; the rest run actions on click. */
 export type NavKey = 'dashboard'
 
@@ -46,6 +53,8 @@ export interface Shell {
   setStorage(used: number, quota: number): void
   /** Open the centered import dialog (e.g. from the welcome screen's button). */
   openImport(): void
+  /** Refresh the header bell: badge count + the dropdown list of plants with missing data. */
+  setIncomplete(items: IncompletePlant[]): void
 }
 
 /** Human-readable byte size for the storage meter (GB / MB / KB). */
@@ -64,6 +73,7 @@ const ICONS = {
   save: 'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z',
   download: 'M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13z',
   trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+  bell: 'M12 2a6 6 0 00-6 6v3.6l-1.7 3.4A1 1 0 005.2 17h13.6a1 1 0 00.9-1.4L18 11.6V8a6 6 0 00-6-6zm0 20a3 3 0 002.8-2H9.2A3 3 0 0012 22z',
 }
 
 // toast glyphs — stroke icons (the <svg> sets fill:none, stroke:currentColor)
@@ -160,6 +170,26 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   headRow.append(crumbs, pickers)
   header.append(pageTitle, headRow)
 
+  // ── bell: "ข้อมูลไม่ครบ" notifier, top-right of the header ──
+  const bellWrap = el('div', 'bell-wrap')
+  const bell = el('button', 'bell')
+  bell.type = 'button'
+  bell.setAttribute('aria-label', 'การแจ้งเตือนข้อมูลไม่ครบ')
+  bell.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.bell}"/></svg>`
+  const bellBadge = el('span', 'bell-badge')
+  bellBadge.hidden = true
+  bell.append(bellBadge)
+  const bellMenu = el('div', 'bell-menu')
+  bellMenu.hidden = true
+  bellMenu.addEventListener('click', (e) => e.stopPropagation())
+  bellWrap.append(bell, bellMenu)
+  header.append(bellWrap)
+  bell.addEventListener('click', (e) => {
+    e.stopPropagation()
+    bellMenu.hidden = !bellMenu.hidden
+  })
+  root.addEventListener('click', () => (bellMenu.hidden = true)) // click elsewhere closes the menu
+
   const view = el('main', 'view')
   const footer = el('footer', 'bar')
   main.append(header, view, footer)
@@ -253,5 +283,24 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
       meterText.parentElement?.classList.toggle('warn', pct >= 80)
     },
     openImport: () => h.onImport(),
+    setIncomplete(items) {
+      bellBadge.textContent = String(items.length)
+      bellBadge.hidden = items.length === 0
+      bell.classList.toggle('has', items.length > 0)
+      bellMenu.replaceChildren()
+      bellMenu.append(
+        el('div', 'bell-head', items.length ? `ข้อมูลไม่ครบ · ${items.length} Plant` : 'ข้อมูลครบทุก Plant ✓'),
+      )
+      for (const it of items) {
+        const b = el('button', 'bell-item')
+        b.type = 'button'
+        b.append(el('span', 'bell-item-name', it.name), el('small', 'bell-item-miss', `ขาด: ${it.missing.join(', ')}`))
+        b.addEventListener('click', () => {
+          bellMenu.hidden = true
+          h.onPlantSettings(it.id)
+        })
+        bellMenu.append(b)
+      }
+    },
   }
 }
