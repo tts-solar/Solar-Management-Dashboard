@@ -25,9 +25,8 @@ type Scope = 'global' | 'plant'
 interface Field {
   key: Key
   label: string
-  kind: 'text' | 'date' | 'number' | 'percent' // percent: shown ×100, stored as a fraction
+  kind: 'text' | 'date' | 'number' | 'percent' | 'money' // percent: shown ×100, stored as a fraction; money: thousands-grouped text (whole baht)
   unit?: string
-  step?: string
   tip: string
   scope: Scope // global = system-wide (shown in both tabs); plant = per-plant only
   globalOnly?: boolean // global-only: shown in the global tab, never offered as a per-plant override
@@ -38,16 +37,16 @@ const FIELDS: Field[] = [
   // per-plant
   { key: 'name', label: 'ชื่อที่แสดง', kind: 'text', scope: 'plant', tip: 'ชื่อที่โชว์บน dashboard แทนรหัส Plant (เว้นว่าง = ใช้รหัส)' },
   { key: 'startDate', label: 'วันเริ่มใช้งาน', kind: 'date', scope: 'plant', tip: 'วันที่ระบบเริ่มผลิตไฟ ใช้คำนวณอายุและการคืนทุน' },
-  { key: 'kWp', label: 'ขนาดติดตั้ง', kind: 'number', unit: 'kWp', step: '0.1', scope: 'plant', tip: 'กำลังผลิตสูงสุดของแผงที่ติดตั้ง เป็นตัวหารหลักของค่า Efficiency' },
-  { key: 'investment', label: 'เงินลงทุน', kind: 'number', unit: '฿', step: '1', scope: 'plant', tip: 'เงินที่ลงทุนติดตั้งระบบนี้ ใช้คำนวณระยะคืนทุน' },
-  { key: 'peakTestFactor', label: 'Peak Test เทียบ Simulate', kind: 'percent', unit: '%', step: '1', scope: 'plant', tip: '% ผลวัดจริงเทียบกับค่าที่จำลองไว้ ของ Plant นี้' },
+  { key: 'kWp', label: 'ขนาดติดตั้ง', kind: 'number', unit: 'kWp', scope: 'plant', tip: 'กำลังผลิตสูงสุดของแผงที่ติดตั้ง เป็นตัวหารหลักของค่า Efficiency' },
+  { key: 'investment', label: 'เงินลงทุน', kind: 'money', unit: '฿', scope: 'plant', tip: 'เงินที่ลงทุนติดตั้งระบบนี้ ใช้คำนวณระยะคืนทุน' },
+  { key: 'peakTestFactor', label: 'Peak Test เทียบ Simulate', kind: 'percent', unit: '%', scope: 'plant', tip: '% ผลวัดจริงเทียบกับค่าที่จำลองไว้ ของ Plant นี้' },
   // system-wide (also shown as overrides in the plant tab)
-  { key: 'performanceRatio', label: 'Performance Ratio', kind: 'percent', unit: '%', step: '1', scope: 'global', tip: '% ที่ระบบผลิตได้จริงเทียบกับทฤษฎี (รวมการสูญเสีย) ปกติ 75–85%' },
-  { key: 'sunHours', label: 'ชั่วโมงแดดต่อวัน', kind: 'number', unit: 'ชม.', step: '0.1', scope: 'global', tip: 'ชั่วโมงที่แดดแรงเต็มที่เฉลี่ยต่อวันของพื้นที่ (Peak Sun Hours)' },
-  { key: 'tariff', label: 'ค่าไฟ', kind: 'number', unit: '฿/kWh', step: '0.01', scope: 'global', tip: 'ราคาต่อหน่วยไฟ ใช้คำนวณมูลค่าที่ประหยัดและการคืนทุน' },
-  { key: 'abnormalBelow', label: 'ผิดปกติเมื่อ Efficiency ต่ำกว่า', kind: 'percent', unit: '%', step: '1', scope: 'global', tip: 'ถ้า Efficiency ต่ำกว่า % นี้ จะถูกทำเครื่องหมายว่าผิดปกติ' },
-  { key: 'paybackPlanYears', label: 'แผนคืนทุน', kind: 'number', unit: 'ปี', step: '0.5', scope: 'global', tip: 'จำนวนปีเป้าหมายที่ต้องการคืนทุน' },
-  { key: 'reinvestAge', label: 'เส้นอายุ Re-invest', kind: 'number', unit: 'ปี', step: '0.5', scope: 'global', globalOnly: true, tip: 'เส้นประแนวนอน "Age of Plant" ในกราฟ Efficiency–Age: Plant ที่อายุเกินค่านี้ควรพิจารณาลงทุนใหม่ · ใช้กับทุก Plant (ตั้งแยกราย Plant ไม่ได้)' },
+  { key: 'performanceRatio', label: 'Performance Ratio', kind: 'percent', unit: '%', scope: 'global', tip: '% ที่ระบบผลิตได้จริงเทียบกับทฤษฎี (รวมการสูญเสีย) ปกติ 75–85%' },
+  { key: 'sunHours', label: 'ชั่วโมงแดดต่อวัน', kind: 'number', unit: 'ชม.', scope: 'global', tip: 'ชั่วโมงที่แดดแรงเต็มที่เฉลี่ยต่อวันของพื้นที่ (Peak Sun Hours)' },
+  { key: 'tariff', label: 'ค่าไฟ', kind: 'number', unit: '฿/kWh', scope: 'global', tip: 'ราคาต่อหน่วยไฟ ใช้คำนวณมูลค่าที่ประหยัดและการคืนทุน' },
+  { key: 'abnormalBelow', label: 'ผิดปกติเมื่อ Efficiency ต่ำกว่า', kind: 'percent', unit: '%', scope: 'global', tip: 'ถ้า Efficiency ต่ำกว่า % นี้ จะถูกทำเครื่องหมายว่าผิดปกติ' },
+  { key: 'paybackPlanYears', label: 'แผนคืนทุน', kind: 'number', unit: 'ปี', scope: 'global', tip: 'จำนวนปีเป้าหมายที่ต้องการคืนทุน' },
+  { key: 'reinvestAge', label: 'เส้นอายุ Re-invest', kind: 'number', unit: 'ปี', scope: 'global', globalOnly: true, tip: 'เส้นประแนวนอน "Age of Plant" ในกราฟ Efficiency–Age: Plant ที่อายุเกินค่านี้ควรพิจารณาลงทุนใหม่ · ใช้กับทุก Plant (ตั้งแยกราย Plant ไม่ได้)' },
 ]
 
 // Shown read-only in the plant tab: always computed, never stored.
@@ -65,6 +64,7 @@ const round = (n: number, d = 2) => String(Math.round(n * 10 ** d) / 10 ** d)
 function show(f: Field, v: unknown): string {
   if (v === null || v === undefined || v === '') return ''
   if (f.kind === 'percent') return round(Number(v) * 100, 1)
+  if (f.kind === 'money') return Math.round(Number(v)).toLocaleString('en-US')
   return String(v)
 }
 
@@ -72,9 +72,20 @@ function read(f: Field, input: HTMLInputElement): unknown {
   const t = input.value.trim()
   if (!t) return undefined
   if (f.kind === 'text' || f.kind === 'date') return t
-  const n = Number(t)
+  const n = Number(f.kind === 'money' ? t.replace(/,/g, '') : t)
   if (!Number.isFinite(n)) return undefined
   return f.kind === 'percent' ? n / 100 : n
+}
+
+/** Reformat a money text input to thousands-grouped whole digits, keeping the caret near its digit. */
+function formatMoney(input: HTMLInputElement): void {
+  const before = input.value.slice(0, input.selectionStart ?? input.value.length).replace(/\D/g, '').length
+  const digits = input.value.replace(/\D/g, '')
+  const grouped = digits ? Number(digits).toLocaleString('en-US') : ''
+  input.value = grouped
+  let pos = 0
+  for (let seen = 0; pos < grouped.length && seen < before; pos++) if (/\d/.test(grouped[pos])) seen++
+  input.setSelectionRange(pos, pos)
 }
 
 /** The grey auto-value shown when a per-plant field is left blank (computed through the global layer). */
@@ -152,9 +163,15 @@ export function openSettings(o: SettingsPanelOpts): void {
     const span = document.createElement('span')
     span.append(document.createTextNode(f.label + ' '), helpBtn(f.tip))
     const input = document.createElement('input')
-    input.type = f.kind === 'percent' ? 'number' : f.kind
-    if (f.step) input.step = f.step
-    if (f.kind !== 'text' && f.kind !== 'date') input.min = '0'
+    input.type = f.kind === 'percent' ? 'number' : f.kind === 'money' ? 'text' : f.kind
+    if (f.kind === 'number' || f.kind === 'percent') {
+      input.step = 'any' // accept any typed value — no "nearest valid value" snapping (spinner still works)
+      input.min = '0'
+    }
+    if (f.kind === 'money') {
+      input.inputMode = 'numeric'
+      input.addEventListener('input', () => formatMoney(input))
+    }
     inputs.set(f.key, input)
     const unit = document.createElement('small')
     unit.textContent = f.unit ?? ''
@@ -190,7 +207,7 @@ export function openSettings(o: SettingsPanelOpts): void {
       const i = document.createElement('input')
       i.type = 'number'
       i.min = '0'
-      if (f.step) i.step = f.step
+      i.step = 'any' // no step snapping — type any price
       return i
     }
     const h1 = mkInput()
