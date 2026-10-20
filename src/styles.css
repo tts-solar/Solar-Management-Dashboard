@@ -333,11 +333,12 @@ dialog.settings .row.pulse {
   }
 }
 .head-row {
-  display: flex;
+  /* same 57/43 split as the content row below, so the filter bar lines up with
+     and fills the same width as the Total Production card */
+  display: grid;
+  grid-template-columns: minmax(0, 57fr) minmax(0, 43fr);
   align-items: center;
-  justify-content: space-between;
   gap: 12px 24px;
-  flex-wrap: wrap;
 }
 .page-title {
   overflow-wrap: anywhere;
@@ -355,6 +356,7 @@ dialog.settings .row.pulse {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 /* "ช่วงเวลา" label + funnel icon in front of the ปี/เดือน dropdowns so the filter is unmistakable */
 .pickers-cue {
@@ -373,12 +375,18 @@ dialog.settings .row.pulse {
   fill: currentColor;
 }
 .picker {
+  flex: 1; /* stretch each dropdown so the two together fill the filter bar */
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-weight: 800;
   font-size: 1.02rem;
   color: var(--gray);
+}
+.picker select {
+  flex: 1;
+  min-width: 0;
 }
 .picker select {
   appearance: none;
@@ -842,6 +850,9 @@ table.data tr.link:focus-visible {
   }
   .page,
   .page.bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .head-row {
     grid-template-columns: minmax(0, 1fr);
   }
   .page > .cell,
