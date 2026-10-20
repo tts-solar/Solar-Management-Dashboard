@@ -82,4 +82,12 @@ describe('buildReportHtml', () => {
     expect(html).toContain('<svg')
     expect(html).toContain('รวม') // totals row
   })
+
+  it('shows a no-data notice (not the KPI table) for a year with no rows', () => {
+    // plant has 2024 data only; filtering to 2025 must not render the misleading investment card (M6b)
+    const html = buildReportHtml([plant], { A: { kWp: 10, tariff: 5, investment: 500000 } }, (p) => p.name, 'month', '2025')
+    expect(html).toContain('ไม่มีข้อมูลสำหรับปี 2025')
+    expect(html).not.toContain('<table')
+    expect(html).not.toContain('เงินลงทุน')
+  })
 })

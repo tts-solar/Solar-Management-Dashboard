@@ -162,8 +162,24 @@ function svgBars(rows: ReportRow[]): string {
 
 /** HTML for one plant's report page (header block + table + saving bar chart). */
 function plantPage(plant: Plant, s: PlantSettings, name: string, g: Granularity, year?: string): string {
-  const r = resolve(plant, s)
   const rows = reportRows(plant, s, g, year)
+  // No data in the chosen period: show a plain notice, not the KPIs + empty table. The investment
+  // KPI comes from settings (not the data), so it would otherwise show a real figure beside an empty
+  // page and read as "saved ฿0 that year" when there is simply nothing recorded (M6b).
+  if (!rows.length) {
+    const scope = year ? `ปี ${year}` : 'ช่วงที่เลือก'
+    return `
+    <section class="rp-page">
+      <div class="rp-head">
+        <div class="rp-title">
+          <h2>${esc(name)}</h2>
+          <p class="rp-sub">รายงานการประหยัดค่าไฟ · ${esc(GRANULARITY_LABELS[g])}</p>
+        </div>
+      </div>
+      <p class="rp-empty">ไม่มีข้อมูลสำหรับ${esc(scope)}</p>
+    </section>`
+  }
+  const r = resolve(plant, s)
   const t = totalsOf(rows)
   const span = dailyInYear(plant, year)
   const years = t.days / 365.25
