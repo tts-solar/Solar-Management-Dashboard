@@ -97,6 +97,17 @@ function handoutBlankOffline(): void {
 async function clearData(): Promise<void> {
   if (notReady()) return
   if (embedded) return
+  // Offer a backup first: clearing wipes this browser's remembered data permanently, so anything
+  // imported but not yet saved to a file would be lost for good (M8).
+  if (plants.length) {
+    const save = await confirmDialog({
+      title: 'บันทึกข้อมูลก่อนล้าง?',
+      message: 'การล้างข้อมูลจะลบข้อมูลที่เบราว์เซอร์นี้จำไว้อย่างถาวร กู้คืนไม่ได้ — แนะนำให้กด "บันทึกไฟล์" เก็บไว้ก่อน เผื่ออยากเปิดดูข้อมูลเดิมภายหลัง',
+      confirmText: 'บันทึกไฟล์ก่อน',
+      cancelText: 'ข้าม ไปล้างเลย',
+    })
+    if (save) saveOrDownload()
+  }
   const ok = await confirmDialog({
     title: 'ล้างข้อมูลที่จำไว้?',
     message: 'ลบข้อมูลที่เบราว์เซอร์นี้จำไว้ทั้งหมด — ไฟล์ที่เคยกด "บันทึกไฟล์" ไว้แล้วจะไม่ถูกลบ',
