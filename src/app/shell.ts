@@ -13,8 +13,8 @@ export interface ShellHandlers {
   onExport(): void
   /** Demo only: hand the client a blank copy of the offline app (absent in the offline build itself). */
   onDownloadBlank?(): void
-  /** Offline: wipe the data this browser auto-remembered. */
-  onClear(): void
+  /** Offline: wipe the data this browser auto-remembered. Absent in a saved/embedded file (nothing to clear). */
+  onClear?(): void
 }
 
 export interface Crumb {
@@ -137,7 +137,9 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   generalGroup.append(actionItem('settings', 'Plant Settings', h.onPlantSettings))
   generalGroup.append(actionItem('save', 'Save File', h.onDownload))
   generalGroup.append(actionItem('report', 'Export Report', h.onExport))
-  generalGroup.append(actionItem('trash', 'Clear Data', h.onClear, true))
+  // A saved/embedded file has no browser-remembered data to wipe, so Clear Data is omitted there — it
+  // used to render as a dead button that clearData() ignored (M9). Only wire it when a handler exists.
+  if (h.onClear) generalGroup.append(actionItem('trash', 'Clear Data', h.onClear, true))
 
   nav.append(menuGroup, generalGroup)
   sidebar.append(brand, nav)

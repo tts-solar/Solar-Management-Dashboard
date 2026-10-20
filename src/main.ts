@@ -65,7 +65,8 @@ const shell = createShell(document.getElementById('app')!, {
   onPlantSettings: (id) => showSettings(id),
   onDownload: () => saveOrDownload(),
   onExport: () => showExport(),
-  onClear: () => void clearData(),
+  // No Clear Data button in a saved/embedded file — there is no remembered data to wipe there (M9).
+  onClear: embedded ? undefined : () => void clearData(),
   // Demo only, and only once the blank offline build is baked in (build:offline runs before build:demo).
   onDownloadBlank: IS_DEMO && blankOfflineAvailable() ? () => handoutBlankOffline() : undefined,
 })
