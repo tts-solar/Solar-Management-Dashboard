@@ -124,11 +124,26 @@ export const avgTariff = (s: PlantSettings): number =>
   s.tariffH2 != null ? (s.tariff + s.tariffH2) / 2 : s.tariff
 
 /**
- * Fields a plant should have real values for before its numbers are trustworthy — the ones with no
- * meaningful universal default: installed size, peak sun hours and the electricity price.
+ * The important fields a plant should have real values for before its numbers are trustworthy — the
+ * data requested from the Owner. kWp is per-plant; the rest are system-wide criteria set once. These
+ * are the fields the Settings dialog highlights and the header bell flags when still unfilled.
  */
-export const REQUIRED_FIELDS = ['kWp', 'sunHours', 'tariff'] as const
+export const REQUIRED_FIELDS = ['kWp', 'performanceRatio', 'sunHours', 'tariff', 'abnormalBelow', 'paybackPlanYears', 'reinvestAge'] as const
 export type RequiredField = (typeof REQUIRED_FIELDS)[number]
+
+/**
+ * Which settings tab each important field lives in — tells the bell which tab to open when guiding the
+ * user to fill it. `plant` = per-plant (ตั้งค่าเฉพาะ Plant); `global` = system-wide (ตั้งค่ารวม).
+ */
+export const REQUIRED_FIELD_SCOPE: Record<RequiredField, 'global' | 'plant'> = {
+  kWp: 'plant',
+  performanceRatio: 'global',
+  sunHours: 'global',
+  tariff: 'global',
+  abnormalBelow: 'global',
+  paybackPlanYears: 'global',
+  reinvestAge: 'global',
+}
 
 /**
  * Which required fields are still unfilled for a plant — i.e. no real value at the per-plant OR the

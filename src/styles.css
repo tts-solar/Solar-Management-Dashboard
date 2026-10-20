@@ -274,6 +274,64 @@ body {
   font-size: 11px;
   color: var(--gray);
 }
+/* one tappable chip per missing field — click jumps straight to that field in the settings dialog */
+.bell-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.bell-chip {
+  padding: 3px 9px;
+  border: 1px solid var(--amber);
+  border-radius: 12px;
+  background: rgba(242, 169, 59, 0.12);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+}
+.bell-chip:hover,
+.bell-chip:focus-visible {
+  background: var(--amber);
+}
+
+/* ── settings dialog: important fields ─────────────────────── */
+/* a left accent marks the fields we asked the Owner for; unfilled ones turn amber */
+dialog.settings .row.important {
+  border-left: 3px solid var(--green);
+  border-radius: 2px;
+  padding-left: 9px;
+}
+/* unfilled important field: amber accent + input, so the gap is obvious at a glance */
+dialog.settings .row.important.missing {
+  border-left-color: var(--amber);
+}
+dialog.settings .row.missing input {
+  border-color: var(--amber);
+  background: rgba(242, 169, 59, 0.1);
+}
+/* blink when the bell takes the user straight to a field */
+@keyframes field-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(242, 169, 59, 0);
+  }
+  30% {
+    box-shadow: 0 0 0 4px rgba(242, 169, 59, 0.5);
+  }
+}
+dialog.settings .row.pulse {
+  border-radius: 4px;
+  animation: field-pulse 0.6s ease-in-out 3;
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog.settings .row.pulse {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(242, 169, 59, 0.5);
+  }
+}
 .head-row {
   display: flex;
   align-items: center;

@@ -1,12 +1,13 @@
 import { toHash, type Route } from './router'
+import type { PlantSettings } from '../data/settings'
 
 /** App frame: left sidebar (brand + nav) beside a main column of header / view / footer. */
 
 export interface ShellHandlers {
   /** Open the centered import dialog; `files` pre-fills it (e.g. a drag-drop), else it opens empty. */
   onImport(files?: File[]): void
-  /** Open the per-plant settings dialog; `plantId` preselects that plant (e.g. from the bell menu). */
-  onPlantSettings(plantId?: string): void
+  /** Open the per-plant settings dialog; `plantId` preselects that plant and `focus` opens straight to one field (from the bell). */
+  onPlantSettings(plantId?: string, focus?: MissingField): void
   /** Save a portable copy of the loaded data (both builds). */
   onDownload(): void
   /** Open the export-report dialog (pick plants + granularity → printable PDF). */
@@ -34,11 +35,18 @@ export interface Picker {
   onChange(value: string): void
 }
 
+/** One unfilled important field: its key (to open the right input), a Thai label, and which tab it lives in. */
+export interface MissingField {
+  key: keyof PlantSettings
+  label: string
+  scope: 'global' | 'plant'
+}
+
 /** A plant whose important fields are still unfilled, listed under the header bell. */
 export interface IncompletePlant {
   id: string
   name: string
-  missing: string[] // Thai labels of the missing fields (e.g. "ขนาดติดตั้ง", "ค่าไฟ")
+  missing: MissingField[]
 }
 
 /** Which sidebar item is highlighted. Dashboard is the only page; the rest run actions on click. */
@@ -298,14 +306,23 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
         el('div', 'bell-head', items.length ? `ข้อมูลไม่ครบ · ${items.length} Plant` : 'ข้อมูลครบทุก Plant ✓'),
       )
       for (const it of items) {
-        const b = el('button', 'bell-item')
-        b.type = 'button'
-        b.append(el('span', 'bell-item-name', it.name), el('small', 'bell-item-miss', `ขาด: ${it.missing.join(', ')}`))
-        b.addEventListener('click', () => {
-          bellMenu.hidden = true
-          h.onPlantSettings(it.id)
-        })
-        bellMenu.append(b)
+        const block = el('div', 'bell-item')
+        block.append(el('span', 'bell-item-name', it.name))
+        // one chip per missing field — clicking it opens the settings dialog straight to that field
+        const chips = el('div', 'bell-chips')
+        for (const m of it.missing) {
+          const chip = el('button', 'bell-chip')
+          chip.type = 'button'
+          chip.textContent = m.label
+          chip.setAttribute('aria-label', `กรอก ${m.label} ของ ${it.name}`)
+          chip.addEventListener('click', () => {
+            bellMenu.hidden = true
+            h.onPlantSettings(it.id, m)
+          })
+          chips.append(chip)
+        }
+        block.append(chips)
+        bellMenu.append(block)
       }
     },
   }

@@ -1,5 +1,5 @@
 import { resolve } from '../data/metrics'
-import { DEFAULT_SETTINGS, GLOBAL_KEY, globalSettings, missingSettings, withDefaults, type PlantSettings, type SettingsMap } from '../data/settings'
+import { DEFAULT_SETTINGS, GLOBAL_KEY, globalSettings, missingSettings, REQUIRED_FIELDS, withDefaults, type PlantSettings, type SettingsMap } from '../data/settings'
 import type { Plant } from '../data/types'
 import { confirmDialog } from './confirm'
 
@@ -18,6 +18,8 @@ export interface SettingsPanelOpts {
   displayName(p: Plant): string
   onSave(plantId: string, values: Partial<PlantSettings>, global: Partial<PlantSettings>): void
   onRemove(plantId: string): void
+  /** Optional: open straight to this field (from the bell) — switch to its tab, scroll, pulse + focus it. */
+  focus?: { key: Key; scope: Scope }
 }
 
 type Key = keyof PlantSettings
@@ -389,6 +391,30 @@ export function openSettings(o: SettingsPanelOpts): void {
     pGrid.append(f.key === 'tariff' ? makeTariffRow(f, 'plant', pInputs, pUnits) : makeRow(f, pInputs, pUnits))
   pPanel.append(pickRow, pNote, pGrid)
 
+  // ── important-field highlight + "ยังไม่ได้กรอก" warning ──
+  // The important fields (the ones we asked the Owner for) get a colored accent; an empty one turns orange
+  // so the user sees exactly what still needs a real value. kWp is the per-plant important field; the rest
+  // are system-wide, shown in the global tab. The per-plant OVERRIDE rows are NOT flagged (blank there just
+  // inherits the global value, so it is not "missing").
+  const important: { input: HTMLInputElement; row: HTMLElement }[] = []
+  const markImportant = (map: Map<Key, HTMLInputElement>, keys: Key[]): void => {
+    for (const k of keys) {
+      const input = map.get(k)
+      const row = input?.closest<HTMLElement>('.row')
+      if (!input || !row || row.dataset.req) continue
+      row.dataset.req = '1'
+      row.classList.add('important')
+      input.addEventListener('input', () => row.classList.toggle('missing', !input.value.trim()))
+      important.push({ input, row })
+    }
+  }
+  const refreshMissing = (): void => {
+    for (const { input, row } of important) row.classList.toggle('missing', !input.value.trim())
+  }
+  const req = new Set<Key>(REQUIRED_FIELDS)
+  markImportant(gInputs, GLOBAL_FIELDS.filter((f) => req.has(f.key)).map((f) => f.key))
+  markImportant(pInputs, ['kWp']) // the only per-plant important field
+
   const plantOf = (): Plant => o.plants.find((p) => p.id === pick.value) ?? o.plants[0]
   const readGlobal = (): Partial<PlantSettings> => {
     const g: Partial<PlantSettings> = {}
@@ -454,6 +480,7 @@ export function openSettings(o: SettingsPanelOpts): void {
   pick.addEventListener('change', () => {
     loadPlant()
     refreshPlant()
+    refreshMissing()
   })
   // editing a global value updates the "ใช้ค่ารวม (…)" hints + the auto peak shown in the plant tab
   for (const f of GLOBAL_FIELDS) gInputs.get(f.key)!.addEventListener('input', refreshPlant)
@@ -493,6 +520,7 @@ export function openSettings(o: SettingsPanelOpts): void {
     h2Inputs.get(activeTab)!.value = ''
     setSplit.get(activeTab)!(false)
     refreshPlant() // clearing global changes the "ใช้ค่ารวม (…)" hints too
+    refreshMissing() // cleared important fields turn orange again
   })
   btn('ยกเลิก', 'ghost', () => finish())
   btn('บันทึก', 'primary', undefined, 'submit')
@@ -556,6 +584,23 @@ export function openSettings(o: SettingsPanelOpts): void {
   document.body.append(dlg)
   fillGlobal()
   loadPlant()
-  setTab('global')
+  refreshMissing()
+  // When opened from the bell, go straight to the field: pick its tab FIRST (so its panel is visible),
+  // show the dialog, then scroll it into view, pulse it ~2s, and focus it to guide correct entry.
+  const target = o.focus
+  setTab(target ? (target.scope === 'plant' ? 'plant' : 'global') : 'global')
   dlg.showModal()
+  if (target) {
+    const map = target.scope === 'plant' ? pInputs : gInputs
+    const input = map.get(target.key)
+    const row = input?.closest<HTMLElement>('.row')
+    if (row && input) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      row.classList.add('pulse')
+      setTimeout(() => row.classList.remove('pulse'), 2000)
+      // tariff's real input sits inside a popup; focus the visible field instead when present
+      const focusEl = row.querySelector<HTMLInputElement>('input.tariff-main') ?? input
+      setTimeout(() => focusEl.focus({ preventScroll: true }), 80)
+    }
+  }
 }
