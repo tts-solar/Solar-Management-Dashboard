@@ -47,8 +47,8 @@ describe('offline download', () => {
     expect(inner).not.toContain('<')
   })
 
-  it('names the file solar-dashboard-<date>.html', () => {
-    expect(downloadName(new Date(2026, 8, 4))).toBe('solar-dashboard-2026-09-04.html')
+  it('names the file solar-dashboard-<date>-<time>.html', () => {
+    expect(downloadName(new Date(2026, 8, 4, 13, 7))).toBe('solar-dashboard-2026-09-04-1307.html')
   })
 })
 

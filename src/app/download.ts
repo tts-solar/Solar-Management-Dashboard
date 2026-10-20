@@ -46,8 +46,10 @@ export function extractSnapshot(html: string): Snapshot | null {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
+// Include the time (to the minute) so saving twice in one day no longer collides on the same name —
+// which made the browser silently append "(1)" to the second file (L2).
 export const downloadName = (d = new Date()): string =>
-  `solar-dashboard-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.html`
+  `solar-dashboard-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.html`
 
 /** Hand an HTML string to the browser as a download. Returns the file name. */
 function triggerDownload(html: string, name: string): string {

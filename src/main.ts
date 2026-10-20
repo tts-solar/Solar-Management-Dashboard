@@ -179,7 +179,10 @@ function commitImport(ok: Imported[]): void {
   }
   rememberPlants()
   const p = ok[ok.length - 1].plant
-  const target: Route = ok.length === 1 ? { view: 'plant', plant: p.id, year: last(yearsOf(p.daily))! } : { view: 'overview' }
+  // A plant whose rows were all skipped has no years, so last(yearsOf) is undefined → a `.../undefined`
+  // route that just bounces back to Overview (L1). Fall back to Overview ourselves when there is no year.
+  const y = last(yearsOf(p.daily))
+  const target: Route = ok.length === 1 && y ? { view: 'plant', plant: p.id, year: y } : { view: 'overview' }
   if (toHash(target) === toHash(current)) render(current) // same URL → no hashchange, redraw by hand
   else go(target)
 }

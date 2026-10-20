@@ -488,6 +488,10 @@ export function openSettings(o: SettingsPanelOpts): void {
   btn('ล้างค่าในแท็บนี้', 'ghost', () => {
     const set = activeTab === 'global' ? gInputs : pInputs
     for (const input of set.values()) input.value = ''
+    // The half-year (H2) price lives in a separate map and the split is its own flag, so clearing the
+    // field inputs alone left a stale H2 value and the "H1 / H2" split still open (L3). Reset both too.
+    h2Inputs.get(activeTab)!.value = ''
+    setSplit.get(activeTab)!(false)
     refreshPlant() // clearing global changes the "ใช้ค่ารวม (…)" hints too
   })
   btn('ยกเลิก', 'ghost', () => finish())

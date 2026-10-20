@@ -375,7 +375,12 @@ export function openExport(o: ExportOpts): void {
   make.type = 'button'
   actions.append(cancel, make)
 
-  dlg.append(head, plantBox, granBox, yearBox, actions)
+  // shown when the user unticks every plant and hits สร้างรายงาน — was a silent no-op before (L4)
+  const err = el('p', 'exp-err', 'เลือกอย่างน้อย 1 Plant ก่อนสร้างรายงาน')
+  err.hidden = true
+  plantBox.addEventListener('change', () => (err.hidden = true)) // ticking a plant clears the warning
+
+  dlg.append(head, plantBox, granBox, yearBox, err, actions)
   document.body.append(dlg)
 
   const close = (): void => {
@@ -397,7 +402,10 @@ export function openExport(o: ExportOpts): void {
   make.addEventListener('click', () => {
     const ids = new Set(boxes.filter((b) => b.input.checked).map((b) => b.id))
     const chosen = o.plants.filter((p) => ids.has(p.id))
-    if (!chosen.length) return
+    if (!chosen.length) {
+      err.hidden = false
+      return
+    }
     const html = buildReportHtml(chosen, o.settings, o.displayName, chosenGran(), chosenYear())
     close()
     openReportOverlay(html)
