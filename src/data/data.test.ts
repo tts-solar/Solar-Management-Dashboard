@@ -199,13 +199,24 @@ describe('settings', () => {
     expect(avgTariff(withDefaults({ tariff: 5 }))).toBe(5)
   })
   it('flags a plant whose important fields are only defaults, and clears when filled', () => {
-    expect(missingSettings({}, 'MH')).toEqual(['kWp', 'sunHours', 'tariff'])
-    // filled at the plant layer
-    expect(missingSettings({ MH: { kWp: 10, sunHours: 5, tariff: 4 } }, 'MH')).toEqual([])
-    // sunHours + tariff from the global layer, kWp from the plant → complete
-    expect(missingSettings({ [GLOBAL_KEY]: { sunHours: 5, tariff: 4 }, MH: { kWp: 10 } }, 'MH')).toEqual([])
-    // only global tariff → kWp + sunHours still missing
-    expect(missingSettings({ [GLOBAL_KEY]: { tariff: 4 }, MH: {} }, 'MH')).toEqual(['kWp', 'sunHours'])
+    const allMissing = ['kWp', 'performanceRatio', 'sunHours', 'tariff', 'abnormalBelow', 'paybackPlanYears', 'reinvestAge']
+    const complete = { kWp: 10, performanceRatio: 80, sunHours: 5, tariff: 4, abnormalBelow: 70, paybackPlanYears: 7, reinvestAge: 10 }
+    // nothing filled at any layer → every important field is flagged
+    expect(missingSettings({}, 'MH')).toEqual(allMissing)
+    // all filled at the plant layer → nothing flagged
+    expect(missingSettings({ MH: complete }, 'MH')).toEqual([])
+    // kWp from the plant, the rest from the global layer → complete
+    const globalRest = { performanceRatio: 80, sunHours: 5, tariff: 4, abnormalBelow: 70, paybackPlanYears: 7, reinvestAge: 10 }
+    expect(missingSettings({ [GLOBAL_KEY]: globalRest, MH: { kWp: 10 } }, 'MH')).toEqual([])
+    // only global tariff → everything except tariff is still missing
+    expect(missingSettings({ [GLOBAL_KEY]: { tariff: 4 }, MH: {} }, 'MH')).toEqual([
+      'kWp',
+      'performanceRatio',
+      'sunHours',
+      'abnormalBelow',
+      'paybackPlanYears',
+      'reinvestAge',
+    ])
   })
 })
 
