@@ -85,6 +85,8 @@ const ICONS = {
   trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
   bell: 'M12 2a6 6 0 00-6 6v3.6l-1.7 3.4A1 1 0 005.2 17h13.6a1 1 0 00.9-1.4L18 11.6V8a6 6 0 00-6-6zm0 20a3 3 0 002.8-2H9.2A3 3 0 0012 22z',
   report: 'M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6H6zm7 1.5L18.5 9H13V3.5zM8 13h2v4H8v-4zm3-2h2v6h-2v-6zm3 3h2v3h-2v-3z',
+  // funnel — labels the year/month pickers as a time filter so users notice they can change the range
+  filter: 'M3 4h18v2.6l-6.8 7.1V20l-4.4 2.2v-7.5L3 6.6V4z',
 }
 
 // toast glyphs — stroke icons (the <svg> sets fill:none, stroke:currentColor)
@@ -268,6 +270,14 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
     },
     setPickers(list) {
       pickers.replaceChildren()
+      // a "ช่วงเวลา" cue + funnel icon marks the group as a filter — otherwise the bare ปี/เดือน
+      // dropdowns sit alone top-right and users miss that they change the whole view's time range
+      if (list.length) {
+        const cue = el('span', 'pickers-cue')
+        cue.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.filter}"/></svg>`
+        cue.append(el('span', '', 'ช่วงเวลา'))
+        pickers.append(cue)
+      }
       for (const p of list) {
         const label = el('label', 'picker')
         const select = el('select')

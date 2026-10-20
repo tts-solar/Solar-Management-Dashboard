@@ -296,7 +296,7 @@ function render(route: Route): void {
 function renderOverview(requested?: string): void {
   const years = allYears()
   const year = requested && years.includes(requested) ? requested : years[years.length - 1]
-  shell.setHeader('Overview', [{ label: 'Overview' }])
+  shell.setHeader(year ? `Overview · ปี ${year}` : 'Overview', [{ label: 'Overview' }])
   setFooter()
   if (!year) {
     shell.setPickers([]) // no blank year picker beside the empty state

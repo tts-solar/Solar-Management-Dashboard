@@ -356,6 +356,22 @@ dialog.settings .row.pulse {
   gap: 10px;
   flex-wrap: wrap;
 }
+/* "ช่วงเวลา" label + funnel icon in front of the ปี/เดือน dropdowns so the filter is unmistakable */
+.pickers-cue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 2px;
+  color: var(--green);
+  font-weight: 800;
+  font-size: 0.98rem;
+  white-space: nowrap;
+}
+.pickers-cue svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
 .picker {
   display: inline-flex;
   align-items: center;
