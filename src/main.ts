@@ -46,6 +46,19 @@ let storage: ReturnType<typeof scopedStorage> = null
 const plants: Plant[] = []
 const settings: SettingsMap = {}
 let current: Route = { view: 'overview' }
+// The sidebar (and its Import / Settings / Save / Export / Clear buttons) renders synchronously
+// above, but storage loads asynchronously in boot(). A click in that window would run against a
+// null storage — an Import wouldn't persist and a false "can't remember" toast would show. This
+// flag flips true at the end of boot(); every sidebar action waits on it (H1 boot race).
+let ready = false
+
+// Block a sidebar action while boot() is still loading storage; show a gentle notice instead of
+// letting the action run against the not-yet-ready state.
+function notReady(): boolean {
+  if (ready) return false
+  shell.toast('กำลังโหลดข้อมูล… รอสักครู่', 'error')
+  return true
+}
 
 const shell = createShell(document.getElementById('app')!, {
   onImport: (files) => openImport(files),
@@ -59,6 +72,7 @@ const shell = createShell(document.getElementById('app')!, {
 
 // save a portable offline copy that carries the loaded data (both builds)
 function saveOrDownload(): void {
+  if (notReady()) return
   if (!plants.length) return shell.toast('ยังไม่มี Plant ให้บันทึก — นำเข้าไฟล์ CSV ก่อน', 'error')
   try {
     const name = downloadHtml({ v: 1, id: new Date().toISOString(), plants, settings })
@@ -81,6 +95,7 @@ function handoutBlankOffline(): void {
 
 // wipe the data this browser auto-remembered (e.g. before handing the computer on)
 async function clearData(): Promise<void> {
+  if (notReady()) return
   if (embedded) return
   const ok = await confirmDialog({
     title: 'ล้างข้อมูลที่จำไว้?',
@@ -128,6 +143,7 @@ function rememberPlants(): void {
 // open the centered preview+confirm dialog; `files` pre-fills it (drag-drop), else it opens empty.
 // The dialog parses + previews the data and only calls commitImport once the user confirms.
 function openImport(files?: File[]): void {
+  if (notReady()) return
   openImportDialog({
     initialFiles: files,
     read: readPlantFiles,
@@ -157,6 +173,7 @@ function commitImport(ok: Imported[]): void {
 }
 
 function showSettings(plantId?: string): void {
+  if (notReady()) return
   if (!plants.length) return shell.toast('ยังไม่มี Plant — นำเข้าไฟล์ CSV ก่อน', 'error')
   openSettings({
     plants,
@@ -184,6 +201,7 @@ function showSettings(plantId?: string): void {
 }
 
 function showExport(): void {
+  if (notReady()) return
   if (!plants.length) return shell.toast('ยังไม่มี Plant — นำเข้าไฟล์ CSV ก่อน', 'error')
   openExport({ plants, settings, displayName })
 }
@@ -295,8 +313,9 @@ function placeholder(text: string, links: Crumb[] = []): void {
 }
 
 // Storage (IndexedDB) loads asynchronously, then we fill the shared plants/settings arrays in
-// place and do the first render. Nothing can be clicked before the shell renders, so there is no
-// race: the UI only appears once boot() has loaded the data.
+// place and do the first render. The sidebar buttons render synchronously before this resolves,
+// so each sidebar action guards on `ready` (set true at the end here) to avoid running against a
+// null storage — the UI view itself only appears once boot() has loaded the data.
 async function boot(): Promise<void> {
   storage = await openScopedStorage(SUFFIX)
   const remembered = embedded ? [] : loadPlants(storage)
@@ -308,6 +327,7 @@ async function boot(): Promise<void> {
   )
   void refreshMeter()
   onRoute(render)
+  ready = true // storage loaded + arrays filled + routing wired — sidebar actions may run now
 }
 
 void boot()
