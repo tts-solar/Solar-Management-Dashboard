@@ -74,7 +74,9 @@ function read(f: Field, input: HTMLInputElement): unknown {
   if (f.kind === 'text' || f.kind === 'date') return t
   const n = Number(f.kind === 'money' ? t.replace(/,/g, '') : t)
   if (!Number.isFinite(n)) return undefined
-  return f.kind === 'percent' ? n / 100 : n
+  // backstop clamp: a percent field is a ratio, so cap it at 100% (and floor at 0) before storing as
+  // a fraction — the on-blur clamp handles the visible value; this guards programmatic / un-blurred edits.
+  return f.kind === 'percent' ? Math.min(100, Math.max(0, n)) / 100 : n
 }
 
 /** Reformat a money text input to thousands-grouped whole digits, keeping the caret near its digit. */
@@ -167,6 +169,17 @@ export function openSettings(o: SettingsPanelOpts): void {
     if (f.kind === 'number' || f.kind === 'percent') {
       input.step = 'any' // accept any typed value — no "nearest valid value" snapping (spinner still works)
       input.min = '0'
+    }
+    if (f.kind === 'percent') {
+      input.max = '100' // a ratio can't exceed 100% (M6)
+      // `max` only constrains the spinner, not typed input — clamp the visible value on blur so an
+      // over-100 (or negative) entry is capped where the user can see it, not silently at save time.
+      input.addEventListener('change', () => {
+        const n = Number(input.value)
+        if (!Number.isFinite(n) || (n <= 100 && n >= 0)) return
+        input.value = String(Math.min(100, Math.max(0, n)))
+        input.dispatchEvent(new Event('input', { bubbles: true })) // recompute hints with the clamped value
+      })
     }
     if (f.kind === 'money') {
       input.inputMode = 'numeric'
