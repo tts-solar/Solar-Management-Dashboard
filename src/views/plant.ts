@@ -7,6 +7,7 @@ import { C, MONTHS, axisTitle, chartLegend, energy, energyScale, kpiCard, mountC
 import { bepChart, bepLegend } from '../charts/bep'
 import { scatterChart } from '../charts/scatter'
 import { dataTable } from './table'
+import { advisorSection } from './advisor'
 import type { ViewCtx } from './overview'
 
 /** One view for design p3–p6: a year (rows = months) or a month (rows = days). */
@@ -211,6 +212,9 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
   }
 
   show(tab)
+
+  // ── Solar vs Storage advisor (uses the same filtered days + resolved settings) ──
+  el.append(advisorSection(daily, r))
 }
 
 const pick = (m: Pick<MetricRow, 'consumed' | 'produced' | 'efficiency' | 'abnormal'>) => ({
