@@ -12,7 +12,7 @@ import { baht, energy, kpiCard, pct } from '../charts/common'
 
 const HEADLINE: Record<Verdict, (size: number) => string> = {
   solar: (s) => `แนะนำ: เพิ่ม Solar ~${s} kW`,
-  storage: (s) => `แนะนำ: เพิ่ม Power Storage ~${s} kWh`,
+  storage: (s) => `แนะนำ: เพิ่ม Energy Storage ~${s} kWh`,
   enough: () => 'เพียงพอแล้ว',
 }
 
@@ -52,7 +52,7 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
   wrap.className = 'advisor-section'
   wrap.innerHTML = `
     <div class="advisor-rule"></div>
-    <h2 class="panel-title">ตัวช่วยตัดสินใจลงทุนเพิ่ม <small>Solar vs Storage</small></h2>
+    <h2 class="panel-title">ตัวช่วยตัดสินใจลงทุนเพิ่ม <small>Solar vs Energy Storage</small></h2>
     <div class="advisor-badge is-${a.verdict}">
       <div class="verdict"></div>
       <div class="reason"></div>
@@ -94,9 +94,9 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
   // ── what-if controls ──
   const fields = wrap.querySelector('[data-fields]')!
   const solarKw = field('+ Solar', a.verdict === 'solar' ? a.size : 0, 'kW')
-  const storageKwh = field('+ Storage', a.verdict === 'storage' ? a.size : 0, 'kWh')
+  const storageKwh = field('+ Energy Storage', a.verdict === 'storage' ? a.size : 0, 'kWh')
   const solarCost = field('ราคา Solar', DEFAULT_SOLAR_COST, '฿/kW')
-  const storageCost = field('ราคา Storage', DEFAULT_STORAGE_COST, '฿/kWh')
+  const storageCost = field('ราคา Energy Storage', DEFAULT_STORAGE_COST, '฿/kWh')
   fields.append(solarKw, storageKwh, solarCost, storageCost)
   const input = (f: HTMLElement) => f.querySelector('input')!
 
