@@ -249,14 +249,23 @@ describe('sample data (synthetic, committed)', () => {
 
 describe.skipIf(!realFile)('real CSV (local only, never committed)', () => {
   const r = realFile ? parseCsv(read(realFile)) : null
-  it('reads every 15-min row of the 6-month export', () => {
-    expect(r!.rows).toBe(17472)
+  it('reads every 15-min row of the export cleanly', () => {
+    // Derived from the data, not hardcoded: holds for any clean export (file may change / grow).
     expect(r!.skipped).toBe(0)
-    expect(r!.first).toBe('2025-12-01 00:00')
-    expect(r!.last).toBe('2026-05-31 23:45')
     expect(r!.intervalMin).toBe(15)
     expect(r!.minProduced).toBeGreaterThanOrEqual(0)
-    expect(toMonthly(r!.daily).map((m) => m.key)).toEqual(['2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05'])
+    // Full days only: 96 fifteen-minute samples per day, first sample 00:00, last 23:45.
+    expect(r!.rows).toBe(r!.daily.length * 96)
+    expect(r!.first.endsWith(' 00:00')).toBe(true)
+    expect(r!.last.endsWith(' 23:45')).toBe(true)
+    // Months are contiguous (no gap): each key is exactly one month after the previous.
+    const keys = toMonthly(r!.daily).map((m) => m.key)
+    expect(keys.length).toBeGreaterThan(0)
+    for (let i = 1; i < keys.length; i++) {
+      const [py, pm] = keys[i - 1].split('-').map(Number)
+      const [cy, cm] = keys[i].split('-').map(Number)
+      expect(cy * 12 + cm).toBe(py * 12 + pm + 1)
+    }
   })
   it('cover rate is produced / consumed', () => {
     const plant: Plant = { id: 'MH', name: 'MH', daily: r!.daily, source: realFile! }
