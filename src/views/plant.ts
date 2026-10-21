@@ -214,7 +214,7 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
   show(tab)
 
   // ── Solar vs Storage advisor (uses the same filtered days + resolved settings) ──
-  el.append(advisorSection(daily, r))
+  el.append(advisorSection(daily, r, plant.profile))
 }
 
 const pick = (m: Pick<MetricRow, 'consumed' | 'produced' | 'efficiency' | 'abnormal'>) => ({

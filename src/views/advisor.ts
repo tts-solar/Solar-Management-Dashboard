@@ -1,4 +1,4 @@
-import type { DailyRow } from '../data/types'
+import type { DailyRow, DayProfile } from '../data/types'
 import type { Resolved } from '../data/metrics'
 import {
   advise,
@@ -45,8 +45,8 @@ function field(label: string, value: number, unit: string): HTMLElement {
  * The Solar vs Storage advisor card for one plant/period. `daily` is the already-filtered set of
  * days on screen, so the verdict reflects the period the user is looking at.
  */
-export function advisorSection(daily: DailyRow[], r: Resolved): HTMLElement {
-  const a = advise(daily, r)
+export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProfile): HTMLElement {
+  const a = advise(daily, r, profile)
 
   const wrap = document.createElement('section')
   wrap.className = 'advisor-section'
@@ -68,8 +68,11 @@ export function advisorSection(daily: DailyRow[], r: Resolved): HTMLElement {
         <div class="kpis whatif-results" data-results></div>
       </div>
     </div>
-    <p class="advisor-note">* ประเมินจากพลังงานรวมต่อวัน (ไฟเหลือ/ซื้อไฟที่มิเตอร์บันทึก) ไม่ใช่โปรไฟล์รายชั่วโมง —
-      ขนาดแบตเตอรี่เป็นค่าประมาณเบื้องต้น การเก็บโปรไฟล์ “วันตัวอย่าง” (ราย 15 นาที) จะช่วยระบุขนาดได้แม่นขึ้น</p>`
+    <p class="advisor-note" data-note></p>`
+
+  wrap.querySelector<HTMLElement>('[data-note]')!.textContent = a.sizedFromProfile
+    ? '* ขนาดแบตเตอรี่คำนวณจากโปรไฟล์ราย 15 นาที (จำลองการชาร์จ-จ่ายตามเวลาจริงของวันเฉลี่ย) จึงรวมผลของจังหวะไฟเหลือ/ไฟขาดในแต่ละช่วงเวลาแล้ว'
+    : '* ประเมินจากพลังงานรวมต่อวัน (ไฟเหลือ/ซื้อไฟที่มิเตอร์บันทึก) ไม่ใช่โปรไฟล์รายชั่วโมง — ขนาดแบตเตอรี่เป็นค่าประมาณเบื้องต้น นำเข้าไฟล์ CSV ใหม่เพื่อให้ระบบอ่านโปรไฟล์ราย 15 นาทีและระบุขนาดได้แม่นขึ้น'
 
   wrap.querySelector<HTMLElement>('.verdict')!.textContent = HEADLINE[a.verdict](a.size)
   wrap.querySelector<HTMLElement>('.reason')!.textContent = a.reason
@@ -80,6 +83,13 @@ export function advisorSection(daily: DailyRow[], r: Resolved): HTMLElement {
     kpiCard('ซื้อไฟจากกริด', energy(a.avgImported), '(ต่อวัน)'),
     kpiCard('ใช้ไฟที่ผลิตเอง', pct(a.selfConsumption, 0), `(พึ่งตัวเอง ${pct(a.selfSufficiency, 0)})`),
   )
+  // profile-only: how much is genuinely time-shiftable and the battery power the peak flow needs
+  if (a.verdict === 'storage' && a.sizedFromProfile && a.powerKw !== null) {
+    wrap.querySelector('[data-kpis]')!.append(
+      kpiCard('เก็บมาใช้ได้จริง', energy(a.shiftableKwh ?? 0), '(ต่อวัน · ตามจังหวะเวลา)'),
+      kpiCard('กำลังแบตที่ควรมี', `${a.powerKw.toFixed(1)} kW`, '(จากช่วงที่ไฟไหลแรงสุด)'),
+    )
+  }
 
   // ── what-if controls ──
   const fields = wrap.querySelector('[data-fields]')!

@@ -1,11 +1,14 @@
 /**
  * Solar vs Storage advisor. Answers one question per plant — add more Solar, add Power Storage,
- * or leave it as is — from the DAILY energy balance the app keeps (produced / consumed / exported /
- * imported per day). The 15-min profile is folded away at parse time (csv.ts), so this is a
- * first-order read on energy totals, NOT a verified hour-by-hour day/night profile: storage sizing
- * is a sensible estimate, not a design figure. See advisorNote() for the caveat shown in the UI.
+ * or leave it as is — from the daily energy balance (produced / consumed / exported / imported).
+ *
+ * Storage sizing also reads the average-day PROFILE when the plant carries one (built from the raw
+ * 15-min intervals in csv.ts): a battery only time-shifts surplus that arrives BEFORE the demand it
+ * covers, so the profile is replayed as a charge/discharge cycle to find how much of each day's
+ * surplus is genuinely shiftable, and the peak flow that sets the battery's power. Without a profile
+ * (plants imported before profiles existed) it falls back to the daily-total estimate.
  */
-import type { DailyRow } from './types'
+import type { DailyRow, DayProfile } from './types'
 import { avgTariff } from './settings'
 import type { Resolved } from './metrics'
 
@@ -37,13 +40,50 @@ export interface Advice {
   verdict: Verdict
   /** recommended add-on size — kW for solar, kWh for storage; 0 when verdict = enough */
   size: number
+  /** energy per typical day a battery can actually time-shift (kWh); null when sized without a profile */
+  shiftableKwh: number | null
+  /** battery power the profile's peak flow implies (kW); null when sized without a profile */
+  powerKw: number | null
+  /** true when storage sizing used the 15-min profile rather than the daily-total fallback */
+  sizedFromProfile: boolean
   reason: string
 }
 
 const mean = (xs: number[]): number => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
 const round = (n: number): number => Math.round(n)
 
-export function advise(daily: DailyRow[], r: Resolved): Advice {
+/**
+ * Replay the average day as a battery cycle: charge on every surplus slot, discharge to cover the
+ * import in each later slot. `shiftable` is the energy actually moved (bounded by timing), and
+ * `peakFlow` the largest single-slot flow (sets the power rating). Totals let callers rescale to the
+ * on-screen period's magnitude.
+ */
+function simulateProfile(profile: DayProfile): {
+  shiftable: number
+  totExport: number
+  totImport: number
+  peakFlow: number
+  intervalMin: number
+} {
+  let soc = 0
+  let shiftable = 0
+  let totExport = 0
+  let totImport = 0
+  let peakFlow = 0
+  for (const s of profile) {
+    soc += s.exported
+    const give = Math.min(soc, s.imported)
+    soc -= give
+    shiftable += give
+    totExport += s.exported
+    totImport += s.imported
+    peakFlow = Math.max(peakFlow, s.exported, s.imported)
+  }
+  const intervalMin = profile.length >= 2 ? profile[1].minute - profile[0].minute : 15
+  return { shiftable, totExport, totImport, peakFlow, intervalMin }
+}
+
+export function advise(daily: DailyRow[], r: Resolved, profile?: DayProfile): Advice {
   const avgProduced = mean(daily.map((d) => d.produced))
   const avgConsumed = mean(daily.map((d) => d.consumed))
   const avgExported = mean(daily.map((d) => d.exported))
@@ -57,6 +97,20 @@ export function advise(daily: DailyRow[], r: Resolved): Advice {
   const expFrac = avgProduced > 0 ? avgExported / avgProduced : 0
   const perKw = r.sunHours * r.performanceRatio // extra kWh/day per kW of solar added
 
+  // profile-aware storage sizing: how much surplus is time-shiftable + the power the peak flow needs,
+  // rescaled from the representative day to the magnitude of the period on screen
+  let shiftableKwh: number | null = null
+  let powerKw: number | null = null
+  let sizedFromProfile = false
+  if (profile && profile.length) {
+    const sim = simulateProfile(profile)
+    shiftableKwh =
+      sim.totImport > 0 ? Math.min(avgExported, avgImported, sim.shiftable * (avgImported / sim.totImport)) : 0
+    const scale = sim.totExport > 0 ? avgExported / sim.totExport : 1
+    powerKw = (sim.peakFlow * scale * 60) / sim.intervalMin
+    sizedFromProfile = true
+  }
+
   let verdict: Verdict
   let size = 0
   let reason: string
@@ -64,9 +118,11 @@ export function advise(daily: DailyRow[], r: Resolved): Advice {
     verdict = 'enough'
     reason = 'ผลิตกับใช้สมดุลกันดีแล้ว ซื้อ/ขายไฟน้อยมาก — ลงทุนเพิ่มยังไม่คุ้ม'
   } else if (impFrac >= MEANINGFUL && expFrac >= MEANINGFUL) {
-    // surplus by day AND buying by night → time-shift it. Size = the smaller flow / usable depth.
+    // surplus by day AND buying by night → time-shift it. Size = the genuinely shiftable energy /
+    // usable depth (profile-timed when available, else the smaller daily flow).
     verdict = 'storage'
-    size = round(Math.min(avgExported, avgImported) / DOD)
+    const shiftable = shiftableKwh ?? Math.min(avgExported, avgImported)
+    size = round(shiftable / DOD)
     reason = `ไฟเหลือขายออก ~${round(avgExported)} kWh/วัน แต่ยังซื้อไฟ ~${round(avgImported)} kWh/วัน — เก็บไฟเหลือไว้ใช้เองคุ้มกว่า`
   } else if (impFrac >= MEANINGFUL) {
     // buying power with little or no surplus → the plant simply makes too little. Add panels.
@@ -90,6 +146,9 @@ export function advise(daily: DailyRow[], r: Resolved): Advice {
     coverRate,
     verdict,
     size,
+    shiftableKwh,
+    powerKw,
+    sizedFromProfile,
     reason,
   }
 }
@@ -131,9 +190,12 @@ export function whatIf(a: Advice, r: Resolved, p: WhatIfParams): WhatIfResult {
   imp -= solarSelf
   exp += extraGen - solarSelf
 
+  // battery can only shift surplus that lines up in time with demand; the profile-derived cap keeps
+  // the what-if honest (no cap when the plant has no profile → same as before)
+  const timingCap = a.shiftableKwh ?? Infinity
   const usable = Math.max(0, p.addStorageKwh) * DOD
   const charge = Math.min(usable, exp)
-  const delivered = Math.min(charge * ROUND_TRIP, imp)
+  const delivered = Math.min(charge * ROUND_TRIP, imp, timingCap)
   imp -= delivered
   exp -= charge
 

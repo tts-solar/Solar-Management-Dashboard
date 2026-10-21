@@ -37,7 +37,7 @@ export async function readPlantFiles(files: File[]): Promise<ImportResult> {
           const parsed = parseCsv(text)
           const id = plantIdFromFile(file.name)
           result.ok.push({
-            plant: { id, name: id, daily: parsed.daily, source: file.name },
+            plant: { id, name: id, daily: parsed.daily, source: file.name, profile: parsed.profile },
             days: parsed.daily.length,
             skipped: parsed.skipped,
           })

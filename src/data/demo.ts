@@ -16,12 +16,10 @@ const RAW: Record<string, string> = { B: bCsv, C: cCsv, D: dCsv, E: eCsv }
 
 /** Parse the bundled B–E CSVs into plants (same shape as the MH sample). */
 export function demoPlants(): Plant[] {
-  return Object.entries(RAW).map(([id, csv]) => ({
-    id,
-    name: id,
-    daily: parseCsv(csv).daily,
-    source: `sample-${id}.csv`,
-  }))
+  return Object.entries(RAW).map(([id, csv]) => {
+    const parsed = parseCsv(csv)
+    return { id, name: id, daily: parsed.daily, source: `sample-${id}.csv`, profile: parsed.profile }
+  })
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { DailyRow, ParseResult } from './types'
+import type { DailyRow, DayProfile, ParseResult } from './types'
 import { daysInMonth, pad } from './aggregate'
 
 /** Thrown for files the dashboard cannot read; the message is shown to the user. */
@@ -98,6 +98,9 @@ export function parseCsv(text: string): ParseResult {
   }
 
   const days = new Map<string, DailyRow>()
+  // sum of each column per time-of-day slot (+ how many days contributed) → averaged into a day shape
+  type Slot = { produced: number; consumed: number; exported: number; imported: number; n: number }
+  const slots = new Map<number, Slot>()
   const gaps = new Map<number, number>()
   let gapSamples = 0
   let rows = 0
@@ -154,6 +157,17 @@ export function parseCsv(text: string): ParseResult {
     day.imported += e.imported
     day.samples++
     day.peakKw = Math.max(day.peakKw, e.produced) // interval kWh for now, converted to kW below
+
+    let slot = slots.get(st.minute)
+    if (!slot) {
+      slot = { produced: 0, consumed: 0, exported: 0, imported: 0, n: 0 }
+      slots.set(st.minute, slot)
+    }
+    slot.produced += e.produced
+    slot.consumed += e.consumed
+    slot.exported += e.exported
+    slot.imported += e.imported
+    slot.n++
   }
   if (!rows) throw new CsvError('ไม่พบข้อมูลในไฟล์ CSV (รูปแบบวันที่ต้องเป็น MM/DD/YYYY HH:mm)')
 
@@ -169,5 +183,17 @@ export function parseCsv(text: string): ParseResult {
 
   const daily = [...days.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
   for (const d of daily) d.peakKw = (d.peakKw * 60) / intervalMin
-  return { daily, rows, skipped, clamped, minProduced, intervalMin, first, last }
+
+  // average each slot into a representative day (sorted by time), so the advisor sees flow timing
+  const profile: DayProfile = [...slots.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([minute, s]) => ({
+      minute,
+      produced: s.produced / s.n,
+      consumed: s.consumed / s.n,
+      exported: s.exported / s.n,
+      imported: s.imported / s.n,
+    }))
+
+  return { daily, profile, rows, skipped, clamped, minProduced, intervalMin, first, last }
 }

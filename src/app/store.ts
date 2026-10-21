@@ -1,5 +1,5 @@
 import type { SettingsMap } from '../data/settings'
-import type { DailyRow, Plant } from '../data/types'
+import type { DailyRow, DayProfile, Plant, ProfileSlot } from '../data/types'
 import { idbDel, idbGetAll, idbOpen, idbPut, memKv } from './idb'
 
 /**
@@ -19,10 +19,24 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/
 const NUM_FIELDS = ['produced', 'consumed', 'exported', 'imported', 'peakKw', 'samples'] as const
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
 
+const SLOT_FIELDS = ['minute', 'produced', 'consumed', 'exported', 'imported'] as const
+
 function toDaily(v: unknown): DailyRow | null {
   if (!isObj(v) || typeof v.date !== 'string' || !DATE.test(v.date)) return null
   for (const k of NUM_FIELDS) if (typeof v[k] !== 'number' || !Number.isFinite(v[k])) return null
   return v as unknown as DailyRow
+}
+
+/** A stored day profile; anything malformed → undefined so the plant still loads (sizing falls back). */
+function toProfile(v: unknown): DayProfile | undefined {
+  if (!Array.isArray(v)) return undefined
+  const out: ProfileSlot[] = []
+  for (const s of v) {
+    if (!isObj(s)) return undefined
+    for (const k of SLOT_FIELDS) if (typeof s[k] !== 'number' || !Number.isFinite(s[k])) return undefined
+    out.push(s as unknown as ProfileSlot)
+  }
+  return out.length ? out.sort((a, b) => a.minute - b.minute) : undefined
 }
 
 function toPlant(v: unknown): Plant | null {
@@ -34,12 +48,15 @@ function toPlant(v: unknown): Plant | null {
     daily.push(row)
   }
   daily.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
-  return {
+  const plant: Plant = {
     id: v.id,
     name: typeof v.name === 'string' && v.name ? v.name : v.id,
     daily,
     source: typeof v.source === 'string' ? v.source : '',
   }
+  const profile = toProfile(v.profile)
+  if (profile) plant.profile = profile
+  return plant
 }
 
 /** Validate embedded JSON; anything malformed → null so the app falls back to the sample data. */
@@ -159,7 +176,9 @@ export function applyMerge(list: Plant[], incoming: Plant): MergeInfo {
   } else if (info.action === 'replaced') {
     list[i] = incoming
   } else {
-    list[i] = { ...existing, daily: mergeDaily(existing.daily, incoming.daily), source: incoming.source }
+    const merged: Plant = { ...existing, daily: mergeDaily(existing.daily, incoming.daily), source: incoming.source }
+    if (incoming.profile) merged.profile = incoming.profile // adopt the freshest day shape
+    list[i] = merged
   }
   return info
 }
