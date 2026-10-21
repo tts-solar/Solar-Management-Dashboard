@@ -50,8 +50,9 @@ body {
   height: 100vh;
 }
 .brand {
-  margin: 0;
-  padding: 6px 8px 0;
+  /* bleed into the sidebar's 14px side gutters so the logo banner spans the full sidebar width */
+  margin: 0 -14px;
+  padding: 0;
   font-size: 1.25rem;
   font-weight: 900;
   font-style: italic;
@@ -64,12 +65,11 @@ body {
 .b-main {
   color: #fff;
 }
-/* brand logo image: a self-contained dark-teal tile, fills the sidebar width */
+/* brand logo image: a self-contained dark-teal tile, spans the full sidebar width as a banner */
 .brand-logo {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: 6px;
 }
 .side-nav {
   display: flex;
@@ -830,14 +830,16 @@ table.data tr.link:focus-visible {
     overflow-x: auto;
   }
   .brand {
+    margin: 0; /* reset the desktop full-bleed bleed — in the top bar the logo is a compact badge */
     padding: 0;
     font-size: 1.1rem;
     white-space: nowrap;
   }
   /* in the horizontal top bar the logo is a fixed-height badge, not full-width */
   .brand-logo {
-    height: 34px;
+    height: 38px;
     width: auto;
+    border-radius: 6px;
   }
   .side-nav {
     flex-direction: row;
