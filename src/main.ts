@@ -11,6 +11,7 @@ import { clearSettings, GLOBAL_KEY, loadSettings, missingSettings, REQUIRED_FIEL
 import type { Plant } from './data/types'
 import { go, onRoute, toHash, type Route } from './app/router'
 import { createShell, type Crumb } from './app/shell'
+import { installAppIcons } from './app/brand'
 import { applyMerge, mergeInfo, clearStored, loadPlants, openScopedStorage, readEmbedded, savePlants, scopedStorage, storageEstimate } from './app/store'
 import { capturePristine, downloadHtml, downloadBlankOffline, blankOfflineAvailable } from './app/download'
 import { readPlantFiles, type Imported } from './app/upload'
@@ -26,6 +27,9 @@ import { renderWelcome } from './views/welcome'
 Chart.register(...registerables, TreemapController, TreemapElement)
 Chart.defaults.font.family = "'Montserrat', 'Leelawadee UI', 'Noto Sans Thai', Tahoma, sans-serif"
 Chart.defaults.color = '#111'
+
+// brand favicon / apple-touch-icon / PWA manifest (runtime-injected; see app/brand.ts for why)
+installAppIcons()
 
 // a downloaded copy carries its plants + settings; read them first, then keep the page HTML pristine
 const embedded = readEmbedded(document)

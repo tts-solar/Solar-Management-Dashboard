@@ -1,5 +1,6 @@
 import { toHash, type Route } from './router'
 import type { PlantSettings } from '../data/settings'
+import { LOGO_DARK } from './brand'
 
 /** App frame: left sidebar (brand + nav) beside a main column of header / view / footer. */
 
@@ -129,7 +130,10 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   // ── left sidebar: brand + nav (built once, permanent on every view) ──
   const sidebar = el('aside', 'sidebar')
   const brand = el('h1', 'brand')
-  brand.append(el('span', 'b-solar', 'Solar'), ' ', el('span', 'b-main', 'Management Dashboard'))
+  const brandLogo = el('img', 'brand-logo')
+  brandLogo.src = LOGO_DARK
+  brandLogo.alt = 'Solar Management Dashboard'
+  brand.append(brandLogo)
   const nav = el('nav', 'side-nav')
   nav.setAttribute('aria-label', 'หลัก')
 

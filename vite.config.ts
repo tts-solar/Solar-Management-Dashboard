@@ -31,6 +31,7 @@ const NETWORK_LOCK_CSP = [
   "style-src 'unsafe-inline'",
   'img-src data: blob:',
   'font-src data:',
+  'manifest-src blob:', // the PWA manifest is injected at runtime as a blob: URL (app/brand.ts)
   "connect-src 'none'",
   "form-action 'none'",
   "base-uri 'none'",
