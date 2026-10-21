@@ -196,9 +196,11 @@ function showSettings(plantId?: string, focus?: { key: keyof PlantSettings; scop
     plantId: plantId ?? (current.view === 'plant' ? current.plant : plants[0].id),
     displayName,
     focus,
-    onSave: (id, values, global) => {
-      // keep {} (not delete) so a reset also overrides a downloaded file's embedded settings
-      settings[id] = values
+    onSave: (plantValues, global) => {
+      // keep {} (not delete) so a reset also overrides a downloaded file's embedded settings.
+      // plantValues carries every plant edited in this session, so switching plants mid-edit no
+      // longer drops the earlier plant's values.
+      for (const [id, values] of Object.entries(plantValues)) settings[id] = values
       settings[GLOBAL_KEY] = global
       const saved = saveSettings(settings, storage)
       shell.toast(saved ? 'บันทึกการตั้งค่าแล้ว' : 'ใช้ค่าใหม่แล้ว แต่เบราว์เซอร์นี้บันทึกถาวรไม่ได้')

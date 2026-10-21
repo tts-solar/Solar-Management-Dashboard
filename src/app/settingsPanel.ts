@@ -16,7 +16,7 @@ export interface SettingsPanelOpts {
   settings: SettingsMap
   plantId: string
   displayName(p: Plant): string
-  onSave(plantId: string, values: Partial<PlantSettings>, global: Partial<PlantSettings>): void
+  onSave(plantValues: Record<string, Partial<PlantSettings>>, global: Partial<PlantSettings>): void
   onRemove(plantId: string): void
   /** Optional: open straight to this field (from the bell) — switch to its tab, scroll, pulse + focus it. */
   focus?: { key: Key; scope: Scope }
@@ -416,6 +416,13 @@ export function openSettings(o: SettingsPanelOpts): void {
   markImportant(pInputs, ['kWp']) // the only per-plant important field
 
   const plantOf = (): Plant => o.plants.find((p) => p.id === pick.value) ?? o.plants[0]
+  // Draft buffer: unsaved plant-tab edits for every plant touched this session. Switching the Plant
+  // picker used to reload the next plant straight over the inputs, dropping what you had just typed for
+  // the previous one. We now stash the plant you leave here, reload it from here if you come back, and
+  // บันทึก writes them all — so filling H1 then moving to H2 keeps H1's values.
+  const drafts = new Map<string, Partial<PlantSettings>>()
+  let loadedId = plantOf().id
+  let plantDirty = false
   const readGlobal = (): Partial<PlantSettings> => {
     const g: Partial<PlantSettings> = {}
     for (const f of GLOBAL_FIELDS) {
@@ -444,7 +451,7 @@ export function openSettings(o: SettingsPanelOpts): void {
   const inputs = (f: Field): HTMLInputElement => pInputs.get(f.key)!
   // load the current plant's stored values into the plant tab
   const loadPlant = (): void => {
-    const raw = o.settings[plantOf().id] ?? {}
+    const raw = drafts.get(plantOf().id) ?? o.settings[plantOf().id] ?? {}
     for (const f of [...PLANT_FIELDS, ...PLANT_OVERRIDE_FIELDS]) inputs(f).value = show(f, raw[f.key])
     // ค่าไฟครึ่งปีหลัง override for this plant; open the split only when the plant has its own H2
     const ph2 = h2Inputs.get('plant')!
@@ -477,10 +484,27 @@ export function openSettings(o: SettingsPanelOpts): void {
     peakOut.value = `≈ ${round(r.peakTestKwhPerDay, 1)}`
   }
 
+  // stash edits to the plant you're leaving (only if it was actually edited, so a merely-viewed plant
+  // keeps any stored fields the form doesn't show)
+  const stashCurrent = (): void => {
+    if (!plantDirty) return
+    const v = collect(pInputs, [...PLANT_FIELDS, ...PLANT_OVERRIDE_FIELDS])
+    addH2('plant', v)
+    drafts.set(loadedId, v)
+  }
+  const markPlantDirty = (): void => {
+    plantDirty = true
+  }
+  pPanel.addEventListener('input', markPlantDirty)
+  pPanel.addEventListener('change', markPlantDirty)
+  h2Inputs.get('plant')!.addEventListener('input', markPlantDirty)
   pick.addEventListener('change', () => {
-    loadPlant()
+    stashCurrent()
+    loadedId = plantOf().id
+    loadPlant() // shows the picked plant's draft if it has one, else its stored values
     refreshPlant()
     refreshMissing()
+    plantDirty = false // the programmatic load above doesn't count as a user edit
   })
   // editing a global value updates the "ใช้ค่ารวม (…)" hints + the auto peak shown in the plant tab
   for (const f of GLOBAL_FIELDS) gInputs.get(f.key)!.addEventListener('input', refreshPlant)
@@ -519,6 +543,7 @@ export function openSettings(o: SettingsPanelOpts): void {
     // field inputs alone left a stale H2 value and the "H1 / H2" split still open (L3). Reset both too.
     h2Inputs.get(activeTab)!.value = ''
     setSplit.get(activeTab)!(false)
+    if (activeTab === 'plant') plantDirty = true // a cleared plant must be stashed/saved, not reverted
     refreshPlant() // clearing global changes the "ใช้ค่ารวม (…)" hints too
     refreshMissing() // cleared important fields turn orange again
   })
@@ -546,12 +571,13 @@ export function openSettings(o: SettingsPanelOpts): void {
 
   form.addEventListener('submit', (e) => {
     e.preventDefault()
+    stashCurrent() // capture the plant on screen too, if it was edited
     const global = collect(gInputs, GLOBAL_FIELDS)
-    const values = collect(pInputs, [...PLANT_FIELDS, ...PLANT_OVERRIDE_FIELDS])
     addH2('global', global)
-    addH2('plant', values)
     finish()
-    o.onSave(plantOf().id, values, global)
+    const plantValues: Record<string, Partial<PlantSettings>> = {}
+    for (const [id, v] of drafts) plantValues[id] = v
+    o.onSave(plantValues, global) // every plant edited this session, not just the visible one
   })
 
   // ── tab switching ──────────────────────────────────────
