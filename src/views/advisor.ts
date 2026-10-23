@@ -79,6 +79,8 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
 
   // ── supporting numbers (answers "ขอข้อมูลสนับสนุน") ──
   wrap.querySelector('[data-kpis]')!.append(
+    kpiCard('ไฟที่ผลิตได้', energy(a.avgProduced), '(ต่อวัน)'),
+    kpiCard('ไฟที่ใช้ทั้งหมด', energy(a.avgConsumed), '(ต่อวัน)'),
     kpiCard('ไฟเหลือขายออก', energy(a.avgExported), '(ต่อวัน)'),
     kpiCard('ซื้อไฟจากกริด', energy(a.avgImported), '(ต่อวัน)'),
     kpiCard('ใช้ไฟที่ผลิตเอง', pct(a.selfConsumption, 0), `(พึ่งตัวเอง ${pct(a.selfSufficiency, 0)})`),
@@ -93,16 +95,38 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
 
   // ── what-if controls ──
   const fields = wrap.querySelector('[data-fields]')!
+  // a full-width caption that heads a group of fields, so the two kinds of lever read apart
+  const groupLabel = (text: string): HTMLElement => {
+    const d = document.createElement('div')
+    d.className = 'whatif-group'
+    d.textContent = text
+    return d
+  }
+  // scenario levers (default to the measured averages) — "what if we produced / used this much"
+  const baseProduced = field('ผลิตไฟ/วัน', Math.round(a.avgProduced), 'kWh')
+  const baseConsumed = field('ใช้ไฟ/วัน', Math.round(a.avgConsumed), 'kWh')
+  // investment levers (cost money → drive payback)
   const solarKw = field('+ Solar', a.verdict === 'solar' ? a.size : 0, 'kW')
   const storageKwh = field('+ Energy Storage', a.verdict === 'storage' ? a.size : 0, 'kWh')
   const solarCost = field('ราคา Solar', DEFAULT_SOLAR_COST, '฿/kW')
   const storageCost = field('ราคา Energy Storage', DEFAULT_STORAGE_COST, '฿/kWh')
-  fields.append(solarKw, storageKwh, solarCost, storageCost)
+  fields.append(
+    groupLabel('สถานการณ์ (ปรับดูได้)'),
+    baseProduced,
+    baseConsumed,
+    groupLabel('ลงทุนเพิ่ม'),
+    solarKw,
+    storageKwh,
+    solarCost,
+    storageCost,
+  )
   const input = (f: HTMLElement) => f.querySelector('input')!
 
   const results = wrap.querySelector('[data-results]')!
   const update = (): void => {
     const p: WhatIfParams = {
+      baseProduced: num(input(baseProduced).value),
+      baseConsumed: num(input(baseConsumed).value),
       addSolarKw: num(input(solarKw).value),
       addStorageKwh: num(input(storageKwh).value),
       solarCostPerKw: num(input(solarCost).value),
@@ -117,7 +141,8 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
       kpiCard('คืนทุน', payback, '(ประมาณ)'),
     )
   }
-  for (const f of [solarKw, storageKwh, solarCost, storageCost]) input(f).addEventListener('input', update)
+  for (const f of [baseProduced, baseConsumed, solarKw, storageKwh, solarCost, storageCost])
+    input(f).addEventListener('input', update)
   update()
 
   return wrap

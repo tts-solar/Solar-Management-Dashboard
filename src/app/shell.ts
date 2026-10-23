@@ -13,10 +13,14 @@ export interface ShellHandlers {
   onDownload(): void
   /** Open the export-report dialog (pick plants + granularity → printable PDF). */
   onExport(): void
+  /** Open the Report PDF dialog (snapshot the real dashboard charts → printable PDF). */
+  onReportPdf(): void
   /** Demo only: hand the client a blank copy of the offline app (absent in the offline build itself). */
   onDownloadBlank?(): void
   /** Offline: wipe the data this browser auto-remembered. Absent in a saved/embedded file (nothing to clear). */
   onClear?(): void
+  /** Offline build: render "Save File" at the sidebar bottom instead of in the GENERAL group. */
+  offline?: boolean
 }
 
 export interface Crumb {
@@ -86,6 +90,8 @@ const ICONS = {
   trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
   bell: 'M12 2a6 6 0 00-6 6v3.6l-1.7 3.4A1 1 0 005.2 17h13.6a1 1 0 00.9-1.4L18 11.6V8a6 6 0 00-6-6zm0 20a3 3 0 002.8-2H9.2A3 3 0 0012 22z',
   report: 'M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6H6zm7 1.5L18.5 9H13V3.5zM8 13h2v4H8v-4zm3-2h2v6h-2v-6zm3 3h2v3h-2v-3z',
+  // printer — the Report PDF action (snapshot the dashboard to print)
+  print: 'M19 8H5a3 3 0 0 0-3 3v6h4v4h12v-4h4v-6a3 3 0 0 0-3-3zm-3 11H8v-5h8v5zm3-8a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM18 3H6v4h12V3z',
   // funnel — labels the year/month pickers as a time filter so users notice they can change the range
   filter: 'M3 4h18v2.6l-6.8 7.1V20l-4.4 2.2v-7.5L3 6.6V4z',
 }
@@ -149,8 +155,10 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   generalGroup.append(el('span', 'nav-label', 'GENERAL'))
   generalGroup.append(actionItem('upload', 'Import Data', () => h.onImport()))
   generalGroup.append(actionItem('settings', 'Plant Settings', h.onPlantSettings))
-  generalGroup.append(actionItem('save', 'Save File', h.onDownload))
+  // Offline: "Save File" sits at the sidebar bottom instead (see the bottom group below); demo keeps it here.
+  if (!h.offline) generalGroup.append(actionItem('save', 'Save File', h.onDownload))
   generalGroup.append(actionItem('report', 'Export Report', h.onExport))
+  generalGroup.append(actionItem('print', 'Report PDF', h.onReportPdf))
   // A saved/embedded file has no browser-remembered data to wipe, so Clear Data is omitted there — it
   // used to render as a dead button that clearData() ignored (M9). Only wire it when a handler exists.
   if (h.onClear) generalGroup.append(actionItem('trash', 'Clear Data', h.onClear, true))
@@ -158,11 +166,14 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   nav.append(menuGroup, generalGroup)
   sidebar.append(brand, nav)
 
-  // Demo only: handing the client a blank offline copy is a different kind of action from the data tools
-  // above, so it sits on its own, pushed to the sidebar bottom (just above the storage meter).
-  if (h.onDownloadBlank) {
+  // Bottom group, on its own just above the storage meter — a different kind of action from the day-to-day
+  // data tools above. Demo: the "Blank Offline Copy" handout. Offline: "Save File" (relocated here).
+  const bottomActions: HTMLButtonElement[] = []
+  if (h.onDownloadBlank) bottomActions.push(actionItem('download', 'Blank Offline Copy', h.onDownloadBlank))
+  if (h.offline) bottomActions.push(actionItem('save', 'Save File', h.onDownload))
+  if (bottomActions.length) {
     const bottomGroup = el('div', 'nav-group nav-group-bottom')
-    bottomGroup.append(actionItem('download', 'Blank Offline Copy', h.onDownloadBlank))
+    bottomGroup.append(...bottomActions)
     sidebar.append(bottomGroup)
   }
 

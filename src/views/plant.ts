@@ -7,7 +7,7 @@ import { C, MONTHS, axisTitle, chartLegend, energy, energyScale, kpiCard, mountC
 import { bepChart, bepLegend } from '../charts/bep'
 import { scatterChart } from '../charts/scatter'
 import { dataTable } from './table'
-import { advisorSection } from './advisor'
+import { openAdvisorDialog } from '../app/advisorDialog'
 import type { ViewCtx } from './overview'
 
 /** One view for design p3–p6: a year (rows = months) or a month (rows = days). */
@@ -36,9 +36,9 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
       })
     : toMonthly(daily).map((p) => {
         const name = MONTHS[+p.key.slice(5) - 1]
-        return { key: p.key, axis: name, label: `${name} ${year}`, m: withMetrics(p, r) }
+        return { key: p.key, axis: name, label: `${name} ${year}`, m: withMetrics(p, r, inPeriod(daily, p.key)) }
       })
-  const total = withMetrics(sumRows(daily), r)
+  const total = withMetrics(sumRows(daily), r, daily)
   // year view: a month is clickable and opens its daily view
   const drill = month ? undefined : (key: string) => ctx.open({ view: 'plant', plant: plant.id, year, month: key.slice(5) })
 
@@ -206,15 +206,19 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
             `(${formatYM(Math.abs(b.planYears - b.bepYears!))})`,
           )
     if (b.fasterPct !== null && b.fasterPct < 0) speed.classList.add('slow')
-    cards.append(kpiCard('Plant Age (Year)', formatYM(b.ageYears)), kpiCard('BEP (Year)', bepValue, bepSub), speed)
+    // a full-width advisor trigger sits at the top of the BEP cards column (above Plant Age)
+    const advisorBtn = document.createElement('button')
+    advisorBtn.type = 'button'
+    advisorBtn.className = 'advisor-trigger'
+    advisorBtn.textContent = 'คำแนะนำลงทุน'
+    advisorBtn.setAttribute('aria-label', 'เปิดตัวช่วยตัดสินใจลงทุนเพิ่ม Solar vs Energy Storage')
+    advisorBtn.addEventListener('click', () => openAdvisorDialog(daily, r, plant.profile))
+    cards.append(advisorBtn, kpiCard('Plant Age (Year)', formatYM(b.ageYears)), kpiCard('BEP (Year)', bepValue, bepSub), speed)
     wrap.append(chartCol, cards)
     return { node: wrap, chartBox, years: b.years }
   }
 
   show(tab)
-
-  // ── Solar vs Storage advisor (uses the same filtered days + resolved settings) ──
-  el.append(advisorSection(daily, r, plant.profile))
 }
 
 const pick = (m: Pick<MetricRow, 'consumed' | 'produced' | 'efficiency' | 'abnormal'>) => ({

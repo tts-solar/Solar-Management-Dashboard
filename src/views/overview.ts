@@ -27,7 +27,7 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
     const daily = inPeriod(plant.daily, year)
     if (!daily.length) continue
     const r = resolve(plant, settingsFor(ctx.settings, plant.id))
-    rows.push({ plant, r, total: withMetrics(sumRows(daily), r), lastDate: daily[daily.length - 1].date })
+    rows.push({ plant, r, total: withMetrics(sumRows(daily), r, daily), lastDate: daily[daily.length - 1].date })
   }
   if (!rows.length) {
     el.innerHTML = '<div class="empty">ยังไม่มีข้อมูลของปีนี้ — นำเข้าไฟล์ CSV ของ Plant ได้จากปุ่มด้านบน</div>'
@@ -61,7 +61,8 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
     let consumed = 0
     let simulate = 0
     for (const x of rows) {
-      const t = withMetrics(sumRows(inPeriod(x.plant.daily, m)), x.r)
+      const pd = inPeriod(x.plant.daily, m)
+      const t = withMetrics(sumRows(pd), x.r, pd)
       produced += t.produced
       consumed += t.consumed
       simulate += t.simulate

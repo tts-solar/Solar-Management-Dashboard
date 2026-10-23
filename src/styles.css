@@ -1120,6 +1120,12 @@ dialog.settings .actions .danger:hover {
   dialog.settings .tariff-row {
     grid-template-columns: minmax(0, 1fr) 40px auto;
   }
+  dialog.settings .row.supplier-link {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  dialog.settings .row.supplier-link .pill {
+    grid-column: auto;
+  }
   dialog.settings .row > span {
     grid-column: 1 / -1;
   }
@@ -1145,15 +1151,73 @@ dialog.settings .panel .note {
 dialog.settings .row.pick {
   margin-bottom: 4px;
 }
-/* a sub-heading inside the plant tab: "ค่ารวม (override เฉพาะ Plant)" */
-dialog.settings .subhead {
-  margin: 10px 0 2px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--line);
+/* Supplier Simulate — the trigger row in the plant tab + its sub-dialog (generator + per-year table) */
+dialog.settings .row.supplier-link {
+  /* same 4-column grid as every plant row, so the Simulate box lands in col-2 — same 150px width
+     and same left edge as the inputs above it — and the ตั้งค่า… button in col-4, under the ค่าไฟ button */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 150px) 48px minmax(0, 150px);
+  align-items: center;
+  gap: 8px;
+  /* give the Simulate row air above (the grid) and below (the action buttons) — it used to sit glued
+     to the บันทึก/ยกเลิก row, which read as cramped */
+  margin-top: 16px;
+  margin-bottom: 18px;
+}
+dialog.settings .row.supplier-link .pill {
+  grid-column: 4; /* right-hand button slot, lined up with the ค่าไฟ button */
+}
+dialog.settings .supplier-status {
+  margin-left: 8px;
   color: var(--gray);
   font-size: 11px;
-  font-weight: 700;
 }
+/* read-only "this year" Simulate value shown on the row (the user still edits every year in the table) */
+dialog.settings .sim-current {
+  text-align: right; /* width is the grid col-2 (100% = 150px), matching the other inputs */
+}
+dialog.settings.supplier .supplier-gen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin: 10px 0;
+}
+dialog.settings.supplier .supplier-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--gray);
+}
+dialog.settings.supplier .supplier-field input {
+  width: 110px;
+}
+dialog.settings.supplier .supplier-table {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px 12px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+dialog.settings.supplier .supplier-year {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+dialog.settings.supplier .supplier-year span {
+  flex: 0 0 72px;
+  font-size: 11px;
+  color: var(--gray);
+}
+dialog.settings.supplier .supplier-year input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* read-only auto field (Peak Test ต่อวัน) */
 dialog.settings input.readonly {
   background: rgba(17, 24, 23, 0.04);
@@ -1189,6 +1253,31 @@ dialog.settings .halfyear.on {
   background: var(--green);
   color: #fff;
 }
+/* small green-outline pill, same visual language as the ค่าไฟ "แบ่งครึ่งปี" toggle — used for the
+   Simulate row's "ตั้งค่า…" button and the Simulate dialog's "สร้างตาราง" button (were plain ghost) */
+dialog.settings .pill {
+  padding: 5px 12px;
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--green);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+dialog.settings .pill:hover {
+  background: rgba(23, 89, 74, 0.06);
+}
+/* the startDate "อัตโนมัติ: YYYY-MM-DD" hint: own line under the input, kept on ONE line (the narrow
+   48px unit column stacked it into unreadable pieces) */
+dialog.settings .row .auto-hint {
+  grid-column: 2 / -1;
+  justify-self: start;
+  white-space: nowrap;
+  font-size: 11px;
+}
 dialog.settings .hy-popup {
   position: absolute;
   top: calc(100% + 4px);
@@ -1217,6 +1306,22 @@ dialog.settings .hy-row {
   gap: 8px;
   margin-bottom: 6px;
   font-size: 12px;
+}
+/* the per-year picker row: let the dropdown take the width so the year label reads in full */
+dialog.settings .hy-row:has(select) {
+  grid-template-columns: auto minmax(0, 1fr);
+  margin-bottom: 10px;
+}
+dialog.settings .hy-row select {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
 }
 dialog.settings .hy-actions {
   display: flex;
@@ -1768,6 +1873,42 @@ dialog.export-dlg::backdrop {
   }
 }
 
+/* ── Report PDF: dashboard-snapshot pages (reuse .report-overlay / .report-doc shell) ─────────── */
+.pdf-page {
+  margin-bottom: 24px;
+  padding: 24px 28px 28px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(17, 24, 23, 0.08);
+}
+.pdf-page-title {
+  margin: 0 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--green);
+  color: var(--green);
+  font-size: 1.3rem;
+}
+
+@media print {
+  .pdf-page {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    page-break-after: always;
+  }
+  .pdf-page:last-child {
+    page-break-after: auto;
+  }
+  .pdf-page,
+  .pdf-page * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
 /* ── Solar vs Storage advisor (plant view) ─────────────────────────────── */
 .advisor-section {
   padding: 14px 0 20px;
@@ -1852,6 +1993,19 @@ dialog.export-dlg::backdrop {
   gap: 6px;
   font-size: 0.9rem;
 }
+/* heads a group of what-if fields (spans the whole grid row) */
+.whatif-group {
+  grid-column: 1 / -1;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--gray);
+  letter-spacing: 0.02em;
+}
+.whatif-group:not(:first-child) {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
 .whatif-label {
   flex: 1 1 auto;
   font-weight: 700;
@@ -1887,4 +2041,121 @@ dialog.export-dlg::backdrop {
   .advisor-kpis {
     grid-template-columns: repeat(3, 1fr);
   }
+}
+
+/* ── advisor trigger on the Plant Age KPI card + the advisor popup ──────── */
+/* advisor trigger: a full-width gray block sitting above the Plant Age card in the BEP column */
+.advisor-trigger {
+  width: 100%;
+  padding: 14px 10px;
+  border: 0;
+  background: var(--gray);
+  color: #fff;
+  font: 700 clamp(0.95rem, 1.4vw, 1.15rem) var(--font);
+  text-align: center;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+.advisor-trigger:hover {
+  filter: brightness(1.15);
+}
+.advisor-trigger:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+dialog.advisor-dlg {
+  width: min(880px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  position: relative;
+  padding: 28px;
+  border: 0;
+  border-radius: 16px;
+  color: var(--ink);
+  font-family: var(--font);
+  box-shadow: 0 24px 60px rgba(17, 24, 23, 0.32);
+}
+dialog.advisor-dlg[open] {
+  display: block;
+  animation: pop-in 0.2s ease-out both;
+}
+dialog.advisor-dlg::backdrop {
+  background: rgba(17, 24, 23, 0.45);
+  backdrop-filter: blur(2px);
+}
+.advisor-dlg-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gray);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.advisor-dlg-close:hover {
+  background: #f0f0f0;
+  color: var(--ink);
+}
+.advisor-dlg-close:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+/* inside the modal the dialog frame replaces the inline section's own top rule + padding */
+.advisor-dlg .advisor-section {
+  padding: 0;
+}
+.advisor-dlg .advisor-rule {
+  display: none;
+}
+.advisor-dlg .panel-title {
+  margin-top: 0;
+  padding-right: 32px; /* clear the ✕ */
+}
+/* the What-if column is narrower in the modal than on the page, so stack its fields (label + fixed
+   input + unit) one per row instead of two — avoids the inputs overflowing the nested cell */
+.advisor-dlg .whatif-fields {
+  grid-template-columns: 1fr;
+  gap: 9px;
+}
+/* roomier modal: wider gaps, numbers kept on one line, and a soft panel that sets the interactive
+   What-if simulator apart from the measured support figures on the left */
+.advisor-dlg .advisor-body {
+  gap: 24px;
+}
+/* support cards fill the column height so the left side always matches the taller What-if panel on
+   the right — no dangling empty space when a "solar" verdict shows only five cards. Rows stretch
+   (grid-auto-rows:1fr) and an odd last card spans the full width so no cell is ever left blank. */
+.advisor-dlg .advisor-support {
+  display: flex;
+  flex-direction: column;
+}
+.advisor-dlg .advisor-kpis {
+  flex: 1 1 auto;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 1fr;
+  gap: 8px;
+}
+.advisor-dlg .advisor-kpis .kpi:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+.advisor-dlg .advisor-kpis .value {
+  font-size: clamp(1.05rem, 1.5vw, 1.35rem);
+  white-space: nowrap;
+}
+.advisor-dlg .whatif {
+  background: #f6f8f7;
+  border-radius: 12px;
+  padding: 16px;
+}
+.advisor-dlg .whatif-results .value {
+  font-size: clamp(1.1rem, 1.6vw, 1.5rem);
+  white-space: nowrap;
 }

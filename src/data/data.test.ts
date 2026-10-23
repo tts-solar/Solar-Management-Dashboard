@@ -10,6 +10,7 @@ import {
   missingSettings,
   saveSettings,
   settingsFor,
+  tariffForDate,
   tariffForMonth,
   withDefaults,
   type PlantSettings,
@@ -198,25 +199,105 @@ describe('settings', () => {
     expect(avgTariff(withDefaults({ tariff: 4, tariffH2: 6 }))).toBe(5)
     expect(avgTariff(withDefaults({ tariff: 5 }))).toBe(5)
   })
+  it('withDefaults sanitizes tariffYearly (index-aligned, trailing trimmed, invalid cleared)', () => {
+    // year 0 split, year 1 blank (use base), year 2 h1-only, trailing blanks trimmed off the end
+    const s = withDefaults({
+      tariffYearly: [
+        { h1: 4, h2: 6 },
+        { h1: 0, h2: null },
+        { h1: 5, h2: -2 }, // invalid h2 → null (h1 all year)
+        { h1: 0, h2: null },
+        { h1: -1, h2: 9 }, // non-positive h1 → use-base, and it is trailing → trimmed
+      ],
+    } as Partial<PlantSettings>)
+    expect(s.tariffYearly).toEqual([
+      { h1: 4, h2: 6 },
+      { h1: 0, h2: null },
+      { h1: 5, h2: null },
+    ])
+  })
+  it('withDefaults drops tariffYearly when no year has a real price', () => {
+    expect(withDefaults({ tariffYearly: [{ h1: 0, h2: null }, { h1: -3, h2: 5 }] } as Partial<PlantSettings>).tariffYearly).toBeUndefined()
+  })
+  it('tariffForDate uses the per-year override, honouring its half-year split', () => {
+    const start = 2024
+    const s = withDefaults({
+      tariff: 4,
+      tariffYearly: [
+        { h1: 7, h2: 9 }, // 2024: split
+        { h1: 6, h2: null }, // 2025: one price all year
+      ],
+    } as Partial<PlantSettings>)
+    expect(tariffForDate(s, '2024-03-10', start)).toBe(7) // 2024 H1
+    expect(tariffForDate(s, '2024-08-10', start)).toBe(9) // 2024 H2
+    expect(tariffForDate(s, '2025-02-01', start)).toBe(6) // 2025 H1
+    expect(tariffForDate(s, '2025-11-01', start)).toBe(6) // 2025 H2 null → h1 all year
+  })
+  it('tariffForDate falls back to the base tariff outside the overridden years', () => {
+    const start = 2024
+    const s = withDefaults({ tariff: 4, tariffH2: 6, tariffYearly: [{ h1: 8, h2: null }] } as Partial<PlantSettings>)
+    // 2023 is before the commissioning year (negative index) → base, which is split 4/6
+    expect(tariffForDate(s, '2023-02-01', start)).toBe(4)
+    expect(tariffForDate(s, '2023-09-01', start)).toBe(6)
+    // 2026 is past the array → base
+    expect(tariffForDate(s, '2026-09-01', start)).toBe(6)
+    // a plant with no per-year data at all → base for every date
+    const plain = withDefaults({ tariff: 5 })
+    expect(tariffForDate(plain, '2024-07-01', start)).toBe(5)
+  })
   it('flags a plant whose important fields are only defaults, and clears when filled', () => {
-    const allMissing = ['kWp', 'performanceRatio', 'sunHours', 'tariff', 'abnormalBelow', 'paybackPlanYears', 'reinvestAge']
-    const complete = { kWp: 10, performanceRatio: 80, sunHours: 5, tariff: 4, abnormalBelow: 70, paybackPlanYears: 7, reinvestAge: 10 }
+    const allMissing = ['kWp', 'abnormalBelow', 'reinvestAge']
+    const complete = { kWp: 10, abnormalBelow: 70, reinvestAge: 10 }
     // nothing filled at any layer → every important field is flagged
     expect(missingSettings({}, 'MH')).toEqual(allMissing)
     // all filled at the plant layer → nothing flagged
     expect(missingSettings({ MH: complete }, 'MH')).toEqual([])
-    // kWp from the plant, the rest from the global layer → complete
-    const globalRest = { performanceRatio: 80, sunHours: 5, tariff: 4, abnormalBelow: 70, paybackPlanYears: 7, reinvestAge: 10 }
+    // kWp from the plant, the system-wide policy from the global layer → complete
+    const globalRest = { abnormalBelow: 70, reinvestAge: 10 }
     expect(missingSettings({ [GLOBAL_KEY]: globalRest, MH: { kWp: 10 } }, 'MH')).toEqual([])
-    // only global tariff → everything except tariff is still missing
-    expect(missingSettings({ [GLOBAL_KEY]: { tariff: 4 }, MH: {} }, 'MH')).toEqual([
-      'kWp',
-      'performanceRatio',
-      'sunHours',
-      'abnormalBelow',
-      'paybackPlanYears',
-      'reinvestAge',
-    ])
+    // production/money fields are no longer required → a lone global tariff leaves kWp + policy still missing
+    expect(missingSettings({ [GLOBAL_KEY]: { tariff: 4 }, MH: {} }, 'MH')).toEqual(['kWp', 'abnormalBelow', 'reinvestAge'])
+  })
+})
+
+describe('supplier yearly simulate', () => {
+  // supplierYearly[0]=36500 kWh → 100/day; [1]=25550 → 70/day. Formula for kWp 25 = 25×4.5×0.8 = 90/day.
+  it('withDefaults keeps supplierYearly and zeroes blank/invalid years (positions preserved)', () => {
+    const s = withDefaults({ supplierYearly: [36500, 0, -5, 35000] } as Partial<PlantSettings>)
+    expect(s.supplierYearly).toEqual([36500, 0, 0, 35000])
+  })
+  it('withDefaults drops supplierYearly when no year has a value', () => {
+    const s = withDefaults({ supplierYearly: [0, 0] } as Partial<PlantSettings>)
+    expect(s.supplierYearly).toBeUndefined()
+  })
+  it('daily simulate uses the supplier year rate, and the formula where a year is blank', () => {
+    const plant = plantOf([day('2025-06-01', 80)])
+    const r = resolve(plant, withDefaults({ kWp: 25, startDate: '2025-01-01', supplierYearly: [36500, 25550] }))
+    expect(r.simulatePerDay).toBeCloseTo(90) // formula fallback value
+    expect(withMetrics(day('2025-06-01', 80), r).simulate).toBeCloseTo(100) // project year 0 → 36500/365
+    expect(withMetrics(day('2026-06-01', 80), r).simulate).toBeCloseTo(70) // project year 1 → 25550/365
+    expect(withMetrics(day('2027-06-01', 80), r).simulate).toBeCloseTo(90) // year 2 blank → formula
+  })
+  it('period simulate sums the real days; omitting the day list falls back to the formula', () => {
+    const daily = [day('2025-03-01', 80), day('2025-03-02', 80)]
+    const r = resolve(plantOf(daily), withDefaults({ kWp: 25, startDate: '2025-01-01', supplierYearly: [36500] }))
+    expect(withMetrics(sumRows(daily), r, daily).simulate).toBeCloseTo(200) // 2 days × 100
+    expect(withMetrics(sumRows(daily), r).simulate).toBeCloseTo(180) // no day list → 2 × 90 formula
+  })
+  it('no supplier data → simulate is unchanged (plain formula)', () => {
+    const daily = [day('2025-03-01', 80), day('2025-03-02', 80)]
+    const r = resolve(plantOf(daily), withDefaults({ kWp: 25, startDate: '2025-01-01' }))
+    expect(withMetrics(day('2025-03-01', 80), r).simulate).toBeCloseTo(90)
+    expect(withMetrics(sumRows(daily), r, daily).simulate).toBeCloseTo(180)
+  })
+  it('bep expected (simulate) cumulates the supplier rate', () => {
+    const daily = [day('2025-02-01', 10), day('2025-02-02', 10)]
+    const plant = plantOf(daily)
+    const base = bep(plant, resolve(plant, withDefaults({ kWp: 2, startDate: '2025-01-01', investment: 1 })))
+    const sup = bep(plant, resolve(plant, withDefaults({ kWp: 2, startDate: '2025-01-01', investment: 1, supplierYearly: [36500] })))
+    // supplier year-1 (100/day) beats the formula (2×4.5×0.8 = 7.2/day) → larger cumulative expected
+    const lastSim = (b: ReturnType<typeof bep>): number => b.years[b.years.length - 1].simulate
+    expect(lastSim(sup)).toBeGreaterThan(lastSim(base))
   })
 })
 

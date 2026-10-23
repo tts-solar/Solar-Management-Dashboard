@@ -13,6 +13,8 @@ export interface PlantSettings {
   investment: number | null // THB; null → sized so the plan pays back in paybackPlanYears
   paybackPlanYears: number
   reinvestAge: number // years — the dashed "Age of Plant" line in the efficiency/age chart (global only, not per-plant)
+  supplierYearly?: number[] // per-plant: supplier's projected yearly energy (kWh), index 0 = project year 1. Where a year has a value, Simulate uses it (÷365 per day) instead of the kWp×sunHours×PR formula; a 0/blank year falls back to the formula.
+  tariffYearly?: { h1: number; h2: number | null }[] // per-plant: electricity price per project year, index 0 = commissioning year (mirrors supplierYearly). h1 = months 1-6, h2 = months 7-12 (null → h1 all year). A year with h1<=0 → fall back to the base tariff/tariffH2.
 }
 
 export const DEFAULT_SETTINGS: PlantSettings = {
@@ -67,6 +69,24 @@ export function withDefaults(raw: Partial<PlantSettings> = {}, base: PlantSettin
   }
   if (typeof raw.name === 'string' && raw.name.trim()) s.name = raw.name.trim()
   if (typeof raw.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.startDate)) s.startDate = raw.startDate
+  // Supplier yearly kWh: keep the array index-aligned to project years (a blank/invalid year → 0, which
+  // metrics reads as "no supplier figure, use the formula"). Never compact — that would shift the years.
+  if (Array.isArray(raw.supplierYearly)) {
+    const years = raw.supplierYearly.map((v) => (positive(v) ? v : 0))
+    if (years.some((n) => n > 0)) s.supplierYearly = years
+  }
+  // Per-year tariff: keep index-aligned to project years like supplierYearly (never compact). Each entry
+  // is { h1, h2 }; a non-positive h1 means "use the base tariff for that year", h2 null means "h1 all year".
+  // Trim trailing use-base entries and keep the array only if at least one year has a real h1.
+  if (Array.isArray(raw.tariffYearly)) {
+    const years = raw.tariffYearly.map((e) => {
+      const h1 = e && positive(e.h1) ? e.h1 : 0
+      const h2 = e && positive(e.h2) ? e.h2 : null
+      return { h1, h2: h1 > 0 ? h2 : null }
+    })
+    while (years.length && years[years.length - 1].h1 <= 0) years.pop()
+    if (years.some((e) => e.h1 > 0)) s.tariffYearly = years
+  }
   return s
 }
 
@@ -119,16 +139,30 @@ export const settingsFor = (map: SettingsMap, plantId: string): PlantSettings =>
 export const tariffForMonth = (s: PlantSettings, month: number): number =>
   month <= 6 ? s.tariff : (s.tariffH2 ?? s.tariff)
 
+/**
+ * Electricity price for a specific date, honouring a per-year override when one is set for that project
+ * year. `startYear` is the commissioning year (project year 0). When the year has a real h1, use it for
+ * months 1-6 and h2 for 7-12 (h2 blank → h1 all year); otherwise fall back to the base tariffForMonth.
+ */
+export const tariffForDate = (s: PlantSettings, date: string, startYear: number): number => {
+  const month = +date.slice(5, 7)
+  const yt = s.tariffYearly?.[+date.slice(0, 4) - startYear]
+  if (yt && yt.h1 > 0) return month <= 6 ? yt.h1 : (yt.h2 && yt.h2 > 0 ? yt.h2 : yt.h1)
+  return tariffForMonth(s, month)
+}
+
 /** Average yearly price: the mean of the two halves when split, otherwise the single `tariff`. */
 export const avgTariff = (s: PlantSettings): number =>
   s.tariffH2 != null ? (s.tariff + s.tariffH2) / 2 : s.tariff
 
 /**
  * The important fields a plant should have real values for before its numbers are trustworthy — the
- * data requested from the Owner. kWp is per-plant; the rest are system-wide criteria set once. These
- * are the fields the Settings dialog highlights and the header bell flags when still unfilled.
+ * data requested from the Owner. kWp is per-plant; abnormalBelow and reinvestAge are system-wide policy
+ * set once. The production/money fields (PR, sun hours, tariff, payback) are per-plant with sensible
+ * built-in defaults, so a blank one is not "missing" and is not flagged. These are the fields the
+ * Settings dialog highlights and the header bell flags when still unfilled.
  */
-export const REQUIRED_FIELDS = ['kWp', 'performanceRatio', 'sunHours', 'tariff', 'abnormalBelow', 'paybackPlanYears', 'reinvestAge'] as const
+export const REQUIRED_FIELDS = ['kWp', 'abnormalBelow', 'reinvestAge'] as const
 export type RequiredField = (typeof REQUIRED_FIELDS)[number]
 
 /**
@@ -137,11 +171,7 @@ export type RequiredField = (typeof REQUIRED_FIELDS)[number]
  */
 export const REQUIRED_FIELD_SCOPE: Record<RequiredField, 'global' | 'plant'> = {
   kWp: 'plant',
-  performanceRatio: 'global',
-  sunHours: 'global',
-  tariff: 'global',
   abnormalBelow: 'global',
-  paybackPlanYears: 'global',
   reinvestAge: 'global',
 }
 

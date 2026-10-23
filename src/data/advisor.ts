@@ -158,6 +158,10 @@ export interface WhatIfParams {
   addStorageKwh: number
   solarCostPerKw: number
   storageCostPerKwh: number
+  /** scenario production per typical day (kWh); defaults to the measured average */
+  baseProduced?: number
+  /** scenario consumption per typical day (kWh); defaults to the measured average */
+  baseConsumed?: number
 }
 
 export interface WhatIfResult {
@@ -185,6 +189,37 @@ export function whatIf(a: Advice, r: Resolved, p: WhatIfParams): WhatIfResult {
   let imp = a.avgImported
   let exp = a.avgExported
 
+  // Scenario baseline: production/consumption default to the measured averages but can be overridden
+  // in the what-if controls. Shift the measured import/export by each delta (timing-naive first order):
+  // extra production displaces import then spills to export; extra consumption eats surplus then
+  // imports; the opposite directions mirror that. At the default values the deltas are 0, so the
+  // measured balance — and every existing result — is untouched.
+  const baseProduced = Math.max(0, p.baseProduced ?? a.avgProduced)
+  const baseConsumed = Math.max(0, p.baseConsumed ?? a.avgConsumed)
+  const dProduced = baseProduced - a.avgProduced
+  if (dProduced >= 0) {
+    const self = Math.min(dProduced, imp)
+    imp -= self
+    exp += dProduced - self
+  } else {
+    const lost = -dProduced
+    const fromExp = Math.min(lost, exp)
+    exp -= fromExp
+    imp += lost - fromExp
+  }
+  const dConsumed = baseConsumed - a.avgConsumed
+  if (dConsumed >= 0) {
+    const fromExp = Math.min(dConsumed, exp)
+    exp -= fromExp
+    imp += dConsumed - fromExp
+  } else {
+    const freed = -dConsumed
+    const cutImp = Math.min(freed, imp)
+    imp -= cutImp
+    exp += freed - cutImp
+  }
+  const baseImport = imp // scenario import before the add-ons — savings are measured against this
+
   const extraGen = Math.max(0, p.addSolarKw) * perKw
   const solarSelf = Math.min(extraGen, imp)
   imp -= solarSelf
@@ -199,12 +234,13 @@ export function whatIf(a: Advice, r: Resolved, p: WhatIfParams): WhatIfResult {
   imp -= delivered
   exp -= charge
 
-  const importAvoided = Math.max(0, a.avgImported - imp)
+  // savings/payback reflect only the add-on investment: import removed vs the chosen scenario baseline
+  const importAvoided = Math.max(0, baseImport - imp)
   const annualSaving = importAvoided * tariff * 365
   const addOnCost = Math.max(0, p.addSolarKw) * p.solarCostPerKw + Math.max(0, p.addStorageKwh) * p.storageCostPerKwh
-  const newProduced = a.avgProduced + extraGen
+  const newProduced = baseProduced + extraGen
   const newSelfConsumption = newProduced > 0 ? Math.max(0, newProduced - exp) / newProduced : null
-  const newSelfSufficiency = a.avgConsumed > 0 ? Math.max(0, a.avgConsumed - imp) / a.avgConsumed : null
+  const newSelfSufficiency = baseConsumed > 0 ? Math.max(0, baseConsumed - imp) / baseConsumed : null
   const paybackYears = annualSaving > 0 && addOnCost > 0 ? addOnCost / annualSaving : null
   return {
     newImport: imp,

@@ -1,6 +1,6 @@
 import type { DailyRow, PeriodRow, Plant } from './types'
 import { dateFromNumber, dayNumber, yearOf } from './aggregate'
-import { avgTariff, PEAK_TO_KWP, tariffForMonth, type PlantSettings } from './settings'
+import { avgTariff, PEAK_TO_KWP, tariffForDate, type PlantSettings } from './settings'
 
 /** Settings with every "auto" value worked out for one plant. */
 export interface Resolved extends PlantSettings {
@@ -74,6 +74,35 @@ export function resolve(plant: Plant, s: PlantSettings): Resolved {
   }
 }
 
+/**
+ * Expected kWh for ONE day, by date. When the plant has the supplier's yearly figures, the day takes
+ * that project-year's value ÷ 365; a year with no supplier figure (0/blank) falls back to the
+ * kWp×sunHours×PR formula. No supplier data at all → the formula, exactly as before.
+ * Project year is 0-based: the first year after the commissioning date is index 0.
+ */
+export function simulatePerDayOn(r: Resolved, date: string): number {
+  const sy = r.supplierYearly
+  if (sy && sy.length) {
+    const idx = Math.floor(ageYears(r.startDate, date))
+    const kwh = idx >= 0 && idx < sy.length ? sy[idx] : 0
+    if (kwh > 0) return kwh / 365
+  }
+  return r.simulatePerDay
+}
+
+/**
+ * Supplier-aware expected kWh for a row, or null to mean "use the plain formula". With supplier data we
+ * sum the per-day rate over the row's REAL data days (so efficiency compares like with like): a daily
+ * row is its own date; a period row needs its aggregated `rows` passed in — without them we fall back to
+ * the formula rather than guess the span.
+ */
+function supplierSimulate(row: DailyRow | PeriodRow, r: Resolved, rows?: readonly DailyRow[]): number | null {
+  if (!r.supplierYearly?.some((v) => v > 0)) return null
+  if (!('days' in row)) return simulatePerDayOn(r, row.date)
+  if (!rows) return null
+  return rows.reduce((s, d) => s + simulatePerDayOn(r, d.date), 0)
+}
+
 export interface MetricRow {
   key: string
   produced: number
@@ -90,9 +119,14 @@ export interface MetricRow {
   abnormal: boolean
 }
 
-export function withMetrics(row: DailyRow | PeriodRow, r: Resolved): MetricRow {
+/**
+ * `rows` (optional) = the real daily rows a PERIOD row aggregates. Pass them when the plant may have
+ * supplier yearly figures so the expected kWh is summed per day/project-year; omit for a daily row or
+ * when no supplier data applies (then the plain formula is used — unchanged behaviour).
+ */
+export function withMetrics(row: DailyRow | PeriodRow, r: Resolved, rows?: readonly DailyRow[]): MetricRow {
   const days = 'days' in row ? row.days : 1
-  const simulate = r.simulatePerDay * days
+  const simulate = supplierSimulate(row, r, rows) ?? r.simulatePerDay * days
   const efficiency = simulate > 0 ? row.produced / simulate : null
   return {
     key: 'key' in row ? row.key : row.date,
@@ -180,9 +214,9 @@ export function bep(plant: Plant, r: Resolved, asOf?: string): BepResult {
     }
     const p = actual.get(date)
     if (p === undefined) projected = true
-    const tariff = tariffForMonth(r, +date.slice(5, 7))
+    const tariff = tariffForDate(r, date, startYear)
     savings += (p ?? avg) * tariff
-    simulate += r.simulatePerDay * tariff
+    simulate += simulatePerDayOn(r, date) * tariff
     // investment 0 means "unknown" (no data to size it) — never report an instant payback
     if (bepDay === null && r.investment > 0 && savings >= r.investment) bepDay = n - start + 1
   }

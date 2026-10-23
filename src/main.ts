@@ -18,6 +18,7 @@ import { readPlantFiles, type Imported } from './app/upload'
 import { openImportDialog } from './app/importDialog'
 import { openSettings } from './app/settingsPanel'
 import { openExport } from './app/exportReport'
+import { openReportPdf } from './app/reportPdf'
 import { confirmDialog } from './app/confirm'
 import { MONTHS, destroyCharts } from './charts/common'
 import { renderOverview as overviewView, type ViewCtx } from './views/overview'
@@ -69,10 +70,13 @@ const shell = createShell(document.getElementById('app')!, {
   onPlantSettings: (id, focus) => showSettings(id, focus),
   onDownload: () => saveOrDownload(),
   onExport: () => showExport(),
+  onReportPdf: () => showReportPdf(),
   // No Clear Data button in a saved/embedded file — there is no remembered data to wipe there (M9).
   onClear: embedded ? undefined : () => void clearData(),
   // Demo only, and only once the blank offline build is baked in (build:offline runs before build:demo).
   onDownloadBlank: IS_DEMO && blankOfflineAvailable() ? () => handoutBlankOffline() : undefined,
+  // Offline build: "Save File" renders at the sidebar bottom instead of up in the GENERAL group.
+  offline: !IS_DEMO,
 })
 
 // save a portable offline copy that carries the loaded data (both builds)
@@ -226,6 +230,20 @@ function showExport(): void {
   if (notReady()) return
   if (!plants.length) return shell.toast('ยังไม่มี Plant — นำเข้าไฟล์ CSV ก่อน', 'error')
   openExport({ plants, settings, displayName })
+}
+
+function showReportPdf(): void {
+  if (notReady()) return
+  if (!plants.length) return shell.toast('ยังไม่มี Plant — นำเข้าไฟล์ CSV ก่อน', 'error')
+  openReportPdf({
+    plants,
+    displayName,
+    renderOverview: (el, year) => overviewView(el, viewCtx, year),
+    renderPlant: (el, plant, year, month) => renderPlant(el, viewCtx, plant, year, month),
+    // the print pages mount their own charts into the shared registry; tear them all down and rebuild
+    // the live view so the dashboard behind the overlay is clean again (destroyCharts runs inside render).
+    onDone: () => render(current),
+  })
 }
 
 const last = <T>(a: T[]): T | undefined => a[a.length - 1]

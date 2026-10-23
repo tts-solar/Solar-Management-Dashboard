@@ -39,8 +39,8 @@ describe('reportRows', () => {
     expect(rows[1].saving).toBe(1400)
   })
 
-  it('reports efficiency as null when capacity cannot be estimated', () => {
-    // peakKw 0 everywhere + kWp auto → estimated kWp 0 → simulate 0 → no efficiency to show
+  it('reports diff as null when there is no claim to compare against', () => {
+    // peakKw 0 everywhere + kWp auto → estimated kWp 0 → simulate 0 → nothing to compare
     const flat: Plant = {
       id: 'Z',
       name: 'Z',
@@ -49,7 +49,23 @@ describe('reportRows', () => {
     }
     const auto = withDefaults({ tariff: 5 }) // kWp left null → auto-estimated
     const [row] = reportRows(flat, auto, 'year')
-    expect(row.efficiency).toBeNull()
+    expect(row.simulate).toBe(0)
+    expect(row.diff).toBeNull()
+  })
+
+  it('compares real production against the supplier per-year claim', () => {
+    // supplierYearly[0] = 36500 kWh for project-year 0 (2024) → 100 kWh/day claimed.
+    // Two 2024 days → claim 200; produced 300 → diff = (300 − 200) / 200 = +50%.
+    const sup: PlantSettings = withDefaults({
+      kWp: 10,
+      tariff: 5,
+      startDate: '2024-01-01',
+      supplierYearly: [36500],
+    })
+    const [row] = reportRows(plant, sup, 'year')
+    expect(row.produced).toBe(300)
+    expect(row.simulate).toBeCloseTo(200, 6) // 2 days × 36500/365, NOT the flat formula
+    expect(row.diff).toBeCloseTo(0.5, 6)
   })
 
   it('limits rows to a single calendar year when year is given', () => {
@@ -80,6 +96,10 @@ describe('buildReportHtml', () => {
     expect(html).toContain('Alpha')
     expect(html).toContain('<table')
     expect(html).toContain('<svg')
+    expect(html).toContain('ผลิตจริง (kWh)') // real-vs-claim comparison columns
+    expect(html).toContain('ผู้ขายเคลม (kWh)')
+    expect(html).toContain('ต่าง (%)')
+    expect(html).toContain('กราฟเทียบผลิตจริงกับที่ผู้ขายเคลม') // the grouped compare chart
     expect(html).toContain('รวม') // totals row
   })
 

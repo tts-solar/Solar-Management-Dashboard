@@ -1,8 +1,8 @@
 import type { DailyRow, Plant } from '../data/types'
 import { monthOf, yearOf } from '../data/aggregate'
-import { resolve } from '../data/metrics'
-import { settingsFor, tariffForMonth, type PlantSettings, type SettingsMap } from '../data/settings'
-import { baht, fmt0, MONTHS, pct } from '../charts/common'
+import { resolve, simulatePerDayOn } from '../data/metrics'
+import { settingsFor, tariffForDate, type PlantSettings, type SettingsMap } from '../data/settings'
+import { baht, fmt0, MONTHS } from '../charts/common'
 
 /**
  * Export-to-Template: a per-plant savings report that mirrors the Greenergy_Saving layout
@@ -33,10 +33,10 @@ export interface ReportRow {
   days: number
   /** Σ over the period's days of produced × that month's tariff (H1/H2 aware). */
   saving: number
-  /** expected kWh for the period = simulatePerDay × days. */
+  /** supplier's claimed kWh for the period = Σ simulatePerDayOn over the days (per-year claim, formula fallback). */
   simulate: number
-  /** produced ÷ simulate; null when there is nothing to compare against. */
-  efficiency: number | null
+  /** (produced − simulate) ÷ simulate — how far real output runs over/under the claim; null when nothing to compare. */
+  diff: number | null
   /** effective price actually applied = saving ÷ produced (฿/kWh). */
   effTariff: number | null
 }
@@ -68,6 +68,7 @@ export function yearsOf(plants: Plant[]): string[] {
 /** Summarise one plant's real daily data into report rows, in period order. */
 export function reportRows(plant: Plant, s: PlantSettings, g: Granularity, year?: string): ReportRow[] {
   const r = resolve(plant, s)
+  const startYear = +r.startDate.slice(0, 4)
   const buckets = new Map<string, DailyRow[]>()
   for (const d of dailyInYear(plant, year)) {
     const k = bucketKey(d.date, g)
@@ -81,13 +82,14 @@ export function reportRows(plant: Plant, s: PlantSettings, g: Granularity, year?
     let consumed = 0
     let imported = 0
     let saving = 0
+    let simulate = 0
     for (const d of days) {
       produced += d.produced
       consumed += d.consumed
       imported += d.imported
-      saving += d.produced * tariffForMonth(s, +d.date.slice(5, 7))
+      saving += d.produced * tariffForDate(r, d.date, startYear)
+      simulate += simulatePerDayOn(r, d.date) // the supplier's claimed kWh for that day's project-year
     }
-    const simulate = r.simulatePerDay * days.length
     rows.push({
       key,
       label: bucketLabel(key, g),
@@ -97,7 +99,7 @@ export function reportRows(plant: Plant, s: PlantSettings, g: Granularity, year?
       days: days.length,
       saving,
       simulate,
-      efficiency: simulate > 0 ? produced / simulate : null,
+      diff: simulate > 0 ? (produced - simulate) / simulate : null,
       effTariff: produced > 0 ? saving / produced : null,
     })
   }
@@ -127,6 +129,14 @@ function totalsOf(rows: ReportRow[]): ReportTotals {
 
 const esc = (s: string): string =>
   s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c)
+
+/** A signed "ต่าง (%)" cell — green when real output beats the supplier's claim, red when it falls short. */
+function diffCell(d: number | null): string {
+  if (d === null) return '<td>–</td>'
+  const sign = d >= 0 ? '+' : '−'
+  const color = d >= 0 ? '#17594a' : '#b00020' // same green as the bars / a plain red
+  return `<td style="color:${color}">${sign}${(Math.abs(d) * 100).toFixed(1)}%</td>`
+}
 
 /** A hand-drawn inline SVG bar chart (saving per period) — no Chart.js, so it prints reliably. */
 function svgBars(rows: ReportRow[]): string {
@@ -160,7 +170,51 @@ function svgBars(rows: ReportRow[]): string {
   return `<svg class="rp-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="กราฟเงินที่ประหยัดต่อช่วงเวลา">${axis}${bars}${labels}${yMax}${yZero}</svg>`
 }
 
-/** HTML for one plant's report page (header block + table + saving bar chart). */
+/**
+ * A hand-drawn grouped-bar chart: per period, the real production bar beside the supplier's claim bar
+ * (kWh), so over/under-performance is visible at a glance. Inline SVG — no Chart.js, so it prints.
+ */
+function svgCompareBars(rows: ReportRow[]): string {
+  if (!rows.length) return ''
+  const W = Math.max(520, rows.length * 56 + 70)
+  const H = 260
+  const pad = { l: 64, r: 14, t: 30, b: 60 }
+  const plotH = H - pad.t - pad.b
+  const plotW = W - pad.l - pad.r
+  const max = Math.max(...rows.flatMap((r) => [r.produced, r.simulate]), 1)
+  const groupW = plotW / rows.length
+  const bw = groupW * 0.3 // two bars per group, side by side around the group centre
+  const baseY = pad.t + plotH
+  const COLOR = { produced: '#17594a', claim: '#2f6f9f' } // green = real, blue = the supplier's claim
+  const bar = (x: number, v: number, fill: string): string => {
+    const h = (v / max) * plotH
+    return `<rect x="${x.toFixed(1)}" y="${(baseY - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${fill}"/>`
+  }
+  const bars = rows
+    .map((r, i) => {
+      const cx = pad.l + i * groupW + groupW / 2
+      return bar(cx - bw - 2, r.produced, COLOR.produced) + bar(cx + 2, r.simulate, COLOR.claim)
+    })
+    .join('')
+  const labels = rows
+    .map((r, i) => {
+      const x = pad.l + i * groupW + groupW / 2
+      const ly = baseY + 12
+      return `<text x="${x.toFixed(1)}" y="${ly}" font-size="9" fill="#111" text-anchor="end" transform="rotate(-45 ${x.toFixed(1)} ${ly})">${esc(r.label)}</text>`
+    })
+    .join('')
+  const axis = `<line x1="${pad.l}" y1="${baseY}" x2="${W - pad.r}" y2="${baseY}" stroke="#595959"/>`
+  const yMax = `<text x="6" y="${pad.t + 8}" font-size="9" fill="#595959">${esc(fmt0(max))}</text>`
+  const yZero = `<text x="6" y="${baseY}" font-size="9" fill="#595959">0</text>`
+  const legend =
+    `<rect x="${pad.l}" y="8" width="11" height="11" fill="${COLOR.produced}"/>` +
+    `<text x="${pad.l + 16}" y="17" font-size="10" fill="#111">ผลิตจริง (kWh)</text>` +
+    `<rect x="${pad.l + 118}" y="8" width="11" height="11" fill="${COLOR.claim}"/>` +
+    `<text x="${pad.l + 134}" y="17" font-size="10" fill="#111">ผู้ขายเคลม (kWh)</text>`
+  return `<svg class="rp-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="กราฟเทียบพลังงานผลิตจริงกับที่ผู้ขายเคลม">${axis}${legend}${bars}${labels}${yMax}${yZero}</svg>`
+}
+
+/** HTML for one plant's report page (header block + table + comparison + saving bar charts). */
 function plantPage(plant: Plant, s: PlantSettings, name: string, g: Granularity, year?: string): string {
   const rows = reportRows(plant, s, g, year)
   // No data in the chosen period: show a plain notice, not the KPIs + empty table. The investment
@@ -210,9 +264,10 @@ function plantPage(plant: Plant, s: PlantSettings, name: string, g: Granularity,
   const head = `
     <tr>
       <th>ช่วงเวลา</th>
-      <th>ประสิทธิภาพ</th>
+      <th>ผลิตจริง (kWh)</th>
+      <th>ผู้ขายเคลม (kWh)</th>
+      <th>ต่าง (%)</th>
       <th>฿/kWh</th>
-      <th>ผลิต (kWh)</th>
       ${showBill ? '<th>ค่าไฟที่ยังจ่าย (฿)</th>' : ''}
       <th>ประหยัด (฿)</th>
     </tr>`
@@ -222,22 +277,24 @@ function plantPage(plant: Plant, s: PlantSettings, name: string, g: Granularity,
       (row) => `
     <tr>
       <td>${esc(row.label)}</td>
-      <td>${pct(row.efficiency)}</td>
-      <td>${row.effTariff === null ? '–' : row.effTariff.toFixed(3)}</td>
       <td>${fmt0(row.produced)}</td>
+      <td>${row.simulate > 0 ? fmt0(row.simulate) : '–'}</td>
+      ${diffCell(row.diff)}
+      <td>${row.effTariff === null ? '–' : row.effTariff.toFixed(3)}</td>
       ${showBill ? `<td>${row.imported > 0 && row.effTariff !== null ? fmt0(row.imported * row.effTariff) : '–'}</td>` : ''}
       <td>${fmt0(row.saving)}</td>
     </tr>`,
     )
     .join('')
 
-  const totalEff = t.simulate > 0 ? t.produced / t.simulate : null
+  const totalDiff = t.simulate > 0 ? (t.produced - t.simulate) / t.simulate : null
   const foot = `
     <tr class="rp-total">
       <td>รวม</td>
-      <td>${pct(totalEff)}</td>
-      <td>–</td>
       <td>${fmt0(t.produced)}</td>
+      <td>${t.simulate > 0 ? fmt0(t.simulate) : '–'}</td>
+      ${diffCell(totalDiff)}
+      <td>–</td>
       ${showBill ? `<td>${fmt0(t.imported * (t.produced > 0 ? t.saving / t.produced : 0))}</td>` : ''}
       <td>${fmt0(t.saving)}</td>
     </tr>`
@@ -250,6 +307,10 @@ function plantPage(plant: Plant, s: PlantSettings, name: string, g: Granularity,
         <tbody>${body}</tbody>
         <tfoot>${foot}</tfoot>
       </table>
+      <div class="rp-chart-wrap">
+        <h3>กราฟเทียบผลิตจริงกับที่ผู้ขายเคลม (${esc(GRANULARITY_LABELS[g])})</h3>
+        ${svgCompareBars(rows)}
+      </div>
       <div class="rp-chart-wrap">
         <h3>กราฟเงินที่ประหยัด (${esc(GRANULARITY_LABELS[g])})</h3>
         ${svgBars(rows)}
