@@ -145,6 +145,34 @@ describe('metrics', () => {
   })
 })
 
+describe('calendar-day Plan', () => {
+  // kWp 25 → 90 kWh/day. Data on only 2 of January's 31 days, so the gap must show as a shortfall.
+  const janGap = plantOf([day('2026-01-01', 90), day('2026-01-02', 90)])
+  const r = resolve(janGap, withDefaults({ kWp: 25 }))
+  it('Plan spans every calendar day of a month with data, gaps included', () => {
+    const total = withMetrics(sumRows(janGap.daily), r, janGap.daily, true)
+    expect(total.simulate).toBeCloseTo(31 * 90) // full January, not just the 2 data days
+    expect(total.peakTest).toBeCloseTo(31 * 81) // peak-test line shares the calendar span
+    expect(total.days).toBe(2) // `days` still reports days that actually have data
+    expect(total.efficiency).toBeCloseTo(180 / (31 * 90)) // 2×90 produced ÷ 31-day Plan
+  })
+  it('omitting the calendar flag keeps the legacy data-days Plan', () => {
+    const total = withMetrics(sumRows(janGap.daily), r, janGap.daily)
+    expect(total.simulate).toBeCloseTo(2 * 90) // only the days with data
+  })
+  it('clamps the span to on/after the commissioning date', () => {
+    const rc = resolve(janGap, withDefaults({ kWp: 25, startDate: '2026-01-15' }))
+    const total = withMetrics(sumRows(janGap.daily), rc, janGap.daily, true)
+    expect(total.simulate).toBeCloseTo(17 * 90) // Jan 15–31, not the whole month
+  })
+  it('a multi-month total counts only the months that have data', () => {
+    const twoMonths = plantOf([day('2026-01-10', 90), day('2026-03-10', 90)]) // Feb has none
+    const rt = resolve(twoMonths, withDefaults({ kWp: 25, startDate: '2026-01-01' }))
+    const total = withMetrics(sumRows(twoMonths.daily), rt, twoMonths.daily, true)
+    expect(total.simulate).toBeCloseTo((31 + 31) * 90) // Jan + Mar full months, February skipped
+  })
+})
+
 describe('bep', () => {
   it('pays back on plan when production equals simulate', () => {
     const p = plantOf([day('2026-01-01', 90)])

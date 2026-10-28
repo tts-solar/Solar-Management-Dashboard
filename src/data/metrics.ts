@@ -1,5 +1,5 @@
 import type { DailyRow, PeriodRow, Plant } from './types'
-import { dateFromNumber, dayNumber, yearOf } from './aggregate'
+import { dateFromNumber, daysInMonth, dayNumber, pad, yearOf } from './aggregate'
 import { avgTariff, PEAK_TO_KWP, tariffForDate, type PlantSettings } from './settings'
 
 /** Settings with every "auto" value worked out for one plant. */
@@ -103,6 +103,29 @@ function supplierSimulate(row: DailyRow | PeriodRow, r: Resolved, rows?: readonl
   return rows.reduce((s, d) => s + simulatePerDayOn(r, d.date), 0)
 }
 
+/**
+ * Plan (expected kWh) on the CALENDAR-DAY basis: for every month that has at least one data row, count
+ * EVERY calendar day of that month — gaps included, so a missing day is a shortfall, not silently
+ * dropped. Each month's span is clamped to on/after the commissioning date (never charge a plant for
+ * days before it existed), and months with no data at all (before commissioning or not yet reporting)
+ * are skipped — so a year total always equals the sum of the months it shows. `spanDays` is that
+ * calendar-day count, shared by the Peak Test reference line so both expected lines sit on one basis.
+ */
+function calendarPlan(r: Resolved, rows: readonly DailyRow[]): { simulate: number; spanDays: number } {
+  let simulate = 0
+  let spanDays = 0
+  for (const monthKey of new Set(rows.map((d) => d.date.slice(0, 7)))) {
+    const [y, m] = monthKey.split('-').map(Number)
+    const from = Math.max(dayNumber(`${monthKey}-01`), dayNumber(r.startDate))
+    const to = dayNumber(`${monthKey}-${pad(daysInMonth(y, m))}`)
+    for (let n = from; n <= to; n++) {
+      simulate += simulatePerDayOn(r, dateFromNumber(n))
+      spanDays++
+    }
+  }
+  return { simulate, spanDays }
+}
+
 export interface MetricRow {
   key: string
   produced: number
@@ -123,10 +146,21 @@ export interface MetricRow {
  * `rows` (optional) = the real daily rows a PERIOD row aggregates. Pass them when the plant may have
  * supplier yearly figures so the expected kWh is summed per day/project-year; omit for a daily row or
  * when no supplier data applies (then the plain formula is used — unchanged behaviour).
+ *
+ * `calendar` (optional) switches Plan to the CALENDAR-DAY basis over `rows`: the expected kWh spans every
+ * day of each month that has data (gaps included — a missing day is a shortfall), clamped to on/after
+ * commissioning. Pass it for the dashboard KPIs/charts. Omit it (daily rows, tests, the export report) to
+ * keep the legacy data-days basis. `days` stays the count of days that actually have data either way.
  */
-export function withMetrics(row: DailyRow | PeriodRow, r: Resolved, rows?: readonly DailyRow[]): MetricRow {
+export function withMetrics(
+  row: DailyRow | PeriodRow,
+  r: Resolved,
+  rows?: readonly DailyRow[],
+  calendar = false,
+): MetricRow {
   const days = 'days' in row ? row.days : 1
-  const simulate = supplierSimulate(row, r, rows) ?? r.simulatePerDay * days
+  const span = calendar && rows ? calendarPlan(r, rows) : null
+  const simulate = span ? span.simulate : supplierSimulate(row, r, rows) ?? r.simulatePerDay * days
   const efficiency = simulate > 0 ? row.produced / simulate : null
   return {
     key: 'key' in row ? row.key : row.date,
@@ -136,7 +170,7 @@ export function withMetrics(row: DailyRow | PeriodRow, r: Resolved, rows?: reado
     imported: row.imported,
     days,
     simulate,
-    peakTest: r.peakTestKwhPerDay * days,
+    peakTest: r.peakTestKwhPerDay * (span ? span.spanDays : days),
     efficiency,
     coverRate: row.consumed > 0 ? row.produced / row.consumed : null,
     abnormal: efficiency !== null && efficiency < r.abnormalBelow,
