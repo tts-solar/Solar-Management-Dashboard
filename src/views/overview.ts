@@ -1,4 +1,4 @@
-import { inPeriod, monthsOf, sumRows } from '../data/aggregate'
+import { inPeriod, inRange, monthsOf, rangeIsDaily, sumRows, yearOf } from '../data/aggregate'
 import { ageYears, cumulative, resolve, withMetrics, type MetricRow, type Resolved } from '../data/metrics'
 import { globalSettings, settingsFor, type SettingsMap } from '../data/settings'
 import type { Plant } from '../data/types'
@@ -21,16 +21,30 @@ interface PlantYear {
   lastDate: string
 }
 
-export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): void {
+export interface DateRange {
+  start: string
+  end: string
+}
+
+export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string, range?: DateRange): void {
+  // one plant's rows for the active filter: a custom date range, else the whole selected year
+  const scoped = (plant: Plant): ReturnType<typeof inPeriod> =>
+    range ? inRange(plant.daily, range.start, range.end) : inPeriod(plant.daily, year)
+
   const rows: PlantYear[] = []
   for (const plant of ctx.plants) {
-    const daily = inPeriod(plant.daily, year)
+    const daily = scoped(plant)
     if (!daily.length) continue
     const r = resolve(plant, settingsFor(ctx.settings, plant.id))
-    rows.push({ plant, r, total: withMetrics(sumRows(daily), r, daily, true), lastDate: daily[daily.length - 1].date })
+    // year view uses the calendar-day plan basis (a missing day is a shortfall); a custom range uses
+    // its selected data days only, so a part-month selection is not charged the whole month's plan
+    rows.push({ plant, r, total: withMetrics(sumRows(daily), r, daily, !range), lastDate: daily[daily.length - 1].date })
   }
   if (!rows.length) {
-    el.innerHTML = '<div class="empty">ยังไม่มีข้อมูลของปีนี้ — นำเข้าไฟล์ CSV ของ Plant ได้จากปุ่มด้านบน</div>'
+    const msg = range
+      ? 'ยังไม่มีข้อมูลในช่วงวันที่เลือก — ลองขยายช่วง หรือนำเข้าไฟล์ CSV เพิ่ม'
+      : 'ยังไม่มีข้อมูลของปีนี้ — นำเข้าไฟล์ CSV ของ Plant ได้จากปุ่มด้านบน'
+    el.innerHTML = `<div class="empty">${msg}</div>`
     return
   }
 
@@ -52,20 +66,45 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
       </section>
     </div>`
   const box = (name: string) => el.querySelector<HTMLElement>(`[data-chart="${name}"]`)!
-  const open = (id: string) => ctx.open({ view: 'plant', plant: id, year })
+  // clicking a plant keeps the active filter: carry the range (anchored to a year the plant route needs)
+  const open = (id: string) =>
+    ctx.open(
+      range
+        ? { view: 'plant', plant: id, year: yearOf(range.start), start: range.start, end: range.end }
+        : { view: 'plant', plant: id, year },
+    )
 
-  // ── cumulative monthly lines, all plants together ──
-  const months = [...new Set(rows.flatMap((x) => monthsOf(x.plant.daily, year)))].sort()
-  const perMonth = months.map((m) => {
+  // ── cumulative lines, all plants together ──
+  // buckets = months of the selected year; or (range) one point per day for a short span, else per month
+  const dayBuckets = !!range && rangeIsDaily(range.start, range.end)
+  const bucketKeys = range
+    ? dayBuckets
+      ? [...new Set(rows.flatMap((x) => scoped(x.plant).map((d) => d.date)))].sort()
+      : [...new Set(rows.flatMap((x) => monthsOf(scoped(x.plant))))].sort()
+    : [...new Set(rows.flatMap((x) => monthsOf(x.plant.daily, year)))].sort()
+  const bucketLabel = (k: string): string =>
+    dayBuckets ? `${+k.slice(8, 10)}/${+k.slice(5, 7)}` : MONTHS[+k.slice(5) - 1]
+  const perMonth = bucketKeys.map((key) => {
     let produced = 0
     let consumed = 0
     let simulate = 0
     for (const x of rows) {
-      const pd = inPeriod(x.plant.daily, m)
-      const t = withMetrics(sumRows(pd), x.r, pd, true)
-      produced += t.produced
-      consumed += t.consumed
-      simulate += t.simulate
+      const pd = inPeriod(x.plant.daily, key)
+      if (dayBuckets) {
+        // a day bucket holds one row per plant: plan is the per-day figure (calendar mode would
+        // charge a whole month's plan to a single day)
+        for (const d of pd) {
+          const m = withMetrics(d, x.r)
+          produced += m.produced
+          consumed += m.consumed
+          simulate += m.simulate
+        }
+      } else {
+        const t = withMetrics(sumRows(pd), x.r, pd, !range)
+        produced += t.produced
+        consumed += t.consumed
+        simulate += t.simulate
+      }
     }
     return { produced, consumed, simulate }
   })
@@ -86,11 +125,11 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string): voi
   })
   const lineBox = box('line')
   lineBox.setAttribute('role', 'img')
-  lineBox.setAttribute('aria-label', 'Cumulative consumption, plan and production by month')
+  lineBox.setAttribute('aria-label', `Cumulative consumption, plan and production by ${dayBuckets ? 'day' : 'month'}`)
   mountChart(lineBox, {
     type: 'line',
     data: {
-      labels: months.map((m) => MONTHS[+m.slice(5) - 1]),
+      labels: bucketKeys.map(bucketLabel),
       datasets: [
         series('Consumer', cum.consumed, C.ink),
         series('Simulate', cum.simulate, C.blue),

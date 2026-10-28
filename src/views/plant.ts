@@ -1,5 +1,5 @@
 import type { Chart } from 'chart.js'
-import { inPeriod, sumRows, toMonthly } from '../data/aggregate'
+import { inPeriod, inRange, rangeIsDaily, sumRows, toMonthly } from '../data/aggregate'
 import { bep, formatYM, resolve, withMetrics, type BepYear, type MetricRow } from '../data/metrics'
 import { settingsFor } from '../data/settings'
 import type { Plant } from '../data/types'
@@ -8,7 +8,7 @@ import { bepChart, bepLegend } from '../charts/bep'
 import { scatterChart } from '../charts/scatter'
 import { dataTable } from './table'
 import { openAdvisorDialog } from '../app/advisorDialog'
-import type { ViewCtx } from './overview'
+import type { DateRange, ViewCtx } from './overview'
 
 /** One view for design p3–p6: a year (rows = months) or a month (rows = days). */
 
@@ -22,25 +22,36 @@ interface Row {
   m: MetricRow
 }
 
-export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: string, month?: string): void {
-  const daily = inPeriod(plant.daily, month ? `${year}-${month}` : year)
+export function renderPlant(
+  el: HTMLElement,
+  ctx: ViewCtx,
+  plant: Plant,
+  year: string,
+  month?: string,
+  range?: DateRange,
+): void {
+  const daily = range ? inRange(plant.daily, range.start, range.end) : inPeriod(plant.daily, month ? `${year}-${month}` : year)
   if (!daily.length) {
     el.innerHTML = '<div class="empty">ไม่มีข้อมูลในช่วงนี้</div>'
     return
   }
   const r = resolve(plant, settingsFor(ctx.settings, plant.id))
-  const rows: Row[] = month
+  // rows one-per-day for a month or a short range (≤62d); one-per-month for a year or a long range
+  const perDay = range ? rangeIsDaily(range.start, range.end) : !!month
+  const rows: Row[] = perDay
     ? daily.map((d) => {
         const [y, mo, day] = d.date.split('-')
         return { key: d.date, axis: `${MONTHS[+mo - 1]} ${+day}`, label: `${day}/${mo}/${y}`, m: withMetrics(d, r) }
       })
     : toMonthly(daily).map((p) => {
         const name = MONTHS[+p.key.slice(5) - 1]
-        return { key: p.key, axis: name, label: `${name} ${year}`, m: withMetrics(p, r, inPeriod(daily, p.key), true) }
+        const yr = p.key.slice(0, 4)
+        return { key: p.key, axis: name, label: `${name} ${yr}`, m: withMetrics(p, r, inPeriod(daily, p.key), !range) }
       })
-  const total = withMetrics(sumRows(daily), r, daily, true)
-  // year view: a month is clickable and opens its daily view
-  const drill = month ? undefined : (key: string) => ctx.open({ view: 'plant', plant: plant.id, year, month: key.slice(5) })
+  // year/month views use the calendar-day plan basis; a custom range counts only its selected days
+  const total = withMetrics(sumRows(daily), r, daily, !range)
+  // year view: a month is clickable and opens its daily view. A custom range has no monthly drill-down.
+  const drill = range || month ? undefined : (key: string) => ctx.open({ view: 'plant', plant: plant.id, year, month: key.slice(5) })
 
   el.innerHTML = `
     <div class="page">
@@ -73,13 +84,13 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
     data: rows.map((x) => x.m[key] / scale.div),
     borderColor: color,
     backgroundColor: color,
-    borderWidth: month ? 2 : 3,
-    pointRadius: month ? 2.5 : 5,
+    borderWidth: perDay ? 2 : 3,
+    pointRadius: perDay ? 2.5 : 5,
     tension: 0.15,
   })
   const lineBox = box('line')
   lineBox.setAttribute('role', 'img')
-  lineBox.setAttribute('aria-label', `Consumption, plan, peak test and production per ${month ? 'day' : 'month'}`)
+  lineBox.setAttribute('aria-label', `Consumption, plan, peak test and production per ${perDay ? 'day' : 'month'}`)
   mountChart(lineBox, {
     type: 'line',
     data: {
@@ -135,7 +146,7 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
   )
 
   // ── efficiency vs consumption ──
-  const zoneText = month ? 'วันที่อาจทำงานผิดปกติ' : 'เดือนที่อาจทำงานผิดปกติ'
+  const zoneText = perDay ? 'วันที่อาจทำงานผิดปกติ' : 'เดือนที่อาจทำงานผิดปกติ'
   scatterChart(
     box('scatter'),
     rows
@@ -171,8 +182,8 @@ export function renderPlant(el: HTMLElement, ctx: ViewCtx, plant: Plant, year: s
   for (const b of buttons) b.addEventListener('click', () => show(b.dataset.tab as Tab))
 
   function tablePanel(): HTMLElement {
-    const list = rows.map((x) => ({ key: x.key, label: month ? x.label : x.axis, ...pick(x.m) }))
-    return dataTable(list, pick(total), !!month, drill)
+    const list = rows.map((x) => ({ key: x.key, label: perDay ? x.label : x.axis, ...pick(x.m) }))
+    return dataTable(list, pick(total), perDay, drill)
   }
 
   function bepPanel(): { node: HTMLElement; chartBox: HTMLElement; years: BepYear[] } {

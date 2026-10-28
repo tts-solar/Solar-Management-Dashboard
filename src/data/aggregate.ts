@@ -55,6 +55,26 @@ export function sumRows(daily: DailyRow[]): PeriodRow {
 export const inPeriod = (daily: DailyRow[], prefix: string): DailyRow[] =>
   daily.filter((d) => d.date.startsWith(prefix))
 
+/**
+ * Rows whose date falls in [start, end] inclusive. Dates are YYYY-MM-DD, so a plain string compare
+ * orders them correctly — no Date parsing needed.
+ */
+export const inRange = (daily: DailyRow[], start: string, end: string): DailyRow[] =>
+  daily.filter((d) => d.date >= start && d.date <= end)
+
+/** Whole days covered by [start, end] inclusive (both YYYY-MM-DD). */
+export const rangeDays = (start: string, end: string): number => dayNumber(end) - dayNumber(start) + 1
+
+/**
+ * A custom range up to this many days is grouped day-by-day on the X axis; longer ranges switch to
+ * monthly so the chart stays readable (≈ two months of daily points is the comfortable ceiling).
+ */
+export const RANGE_DAILY_MAX = 62
+
+/** True when a custom range is short enough to plot one point per day (else group by month). */
+export const rangeIsDaily = (start: string, end: string): boolean =>
+  rangeDays(start, end) <= RANGE_DAILY_MAX
+
 export const yearsOf = (daily: DailyRow[]): string[] => [...new Set(daily.map((d) => yearOf(d.date)))]
 
 export const monthsOf = (daily: DailyRow[], year?: string): string[] =>

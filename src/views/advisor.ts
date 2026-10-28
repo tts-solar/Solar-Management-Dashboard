@@ -41,6 +41,29 @@ function field(label: string, value: number, unit: string): HTMLElement {
   return row
 }
 
+type CardTone = 'green' | 'yellow' | 'blue'
+
+/** A grouped, color-toned KPI card holding one or more label/value(/sub) rows. */
+function groupCard(tone: CardTone, rows: { label: string; value: string; sub?: string }[], wide = false): HTMLElement {
+  const card = document.createElement('div')
+  card.className = `kpi kpi-group is-${tone}${wide ? ' wide' : ''}`
+  for (const r of rows) {
+    const item = document.createElement('div')
+    item.className = 'kpi-item'
+    const add = (cls: string, text: string): void => {
+      const d = document.createElement('div')
+      d.className = cls
+      d.textContent = text
+      item.append(d)
+    }
+    add('label', r.label)
+    add('value', r.value)
+    if (r.sub) add('sub', r.sub)
+    card.append(item)
+  }
+  return card
+}
+
 /**
  * The Solar vs Storage advisor card for one plant/period. `daily` is the already-filtered set of
  * days on screen, so the verdict reflects the period the user is looking at.
@@ -64,6 +87,10 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
       </div>
       <div class="whatif">
         <div class="support-title">ลองเพิ่มดู (What-if)</div>
+        <div class="tabs whatif-tabs" role="tablist" data-whatif-tabs>
+          <button type="button" role="tab" class="tab" data-mode="solar">Solar</button>
+          <button type="button" role="tab" class="tab" data-mode="storage">Energy Storage</button>
+        </div>
         <div class="whatif-fields" data-fields></div>
         <div class="kpis whatif-results" data-results></div>
       </div>
@@ -77,17 +104,23 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
   wrap.querySelector<HTMLElement>('.verdict')!.textContent = HEADLINE[a.verdict](a.size)
   wrap.querySelector<HTMLElement>('.reason')!.textContent = a.reason
 
-  // ── supporting numbers (answers "ขอข้อมูลสนับสนุน") ──
-  wrap.querySelector('[data-kpis]')!.append(
-    kpiCard('ไฟที่ผลิตได้', energy(a.avgProduced), '(ต่อวัน)'),
-    kpiCard('ไฟที่ใช้ทั้งหมด', energy(a.avgConsumed), '(ต่อวัน)'),
-    kpiCard('ไฟเหลือขายออก', energy(a.avgExported), '(ต่อวัน)'),
-    kpiCard('ซื้อไฟจากกริด', energy(a.avgImported), '(ต่อวัน)'),
-    kpiCard('ใช้ไฟที่ผลิตเอง', pct(a.selfConsumption, 0), `(พึ่งตัวเอง ${pct(a.selfSufficiency, 0)})`),
+  // ── supporting numbers (answers "ขอข้อมูลสนับสนุน"), grouped into 3 color-coded cards:
+  //    green = produce vs use · yellow = where the used power comes from · blue = surplus sold out ──
+  const kpis = wrap.querySelector('[data-kpis]')!
+  kpis.append(
+    groupCard('green', [
+      { label: 'ไฟที่ใช้ทั้งหมด', value: energy(a.avgConsumed), sub: '(ต่อวัน)' },
+      { label: 'ไฟที่ผลิตได้', value: energy(a.avgProduced), sub: '(ต่อวัน)' },
+    ]),
+    groupCard('yellow', [
+      { label: 'ซื้อไฟจากกริด', value: energy(a.avgImported), sub: '(ต่อวัน)' },
+      { label: 'ใช้ไฟที่ผลิตเอง', value: pct(a.selfConsumption, 0), sub: `(พึ่งตัวเอง ${pct(a.selfSufficiency, 0)})` },
+    ]),
+    groupCard('blue', [{ label: 'ไฟเหลือขายออก', value: energy(a.avgExported), sub: '(ต่อวัน)' }], true),
   )
   // profile-only: how much is genuinely time-shiftable and the battery power the peak flow needs
   if (a.verdict === 'storage' && a.sizedFromProfile && a.powerKw !== null) {
-    wrap.querySelector('[data-kpis]')!.append(
+    kpis.append(
       kpiCard('เก็บมาใช้ได้จริง', energy(a.shiftableKwh ?? 0), '(ต่อวัน · ตามจังหวะเวลา)'),
       kpiCard('กำลังแบตที่ควรมี', `${a.powerKw.toFixed(1)} kW`, '(จากช่วงที่ไฟไหลแรงสุด)'),
     )
@@ -110,25 +143,33 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
   const storageKwh = field('+ Energy Storage', a.verdict === 'storage' ? a.size : 0, 'kWh')
   const solarCost = field('ราคา Solar', DEFAULT_SOLAR_COST, '฿/kW')
   const storageCost = field('ราคา Energy Storage', DEFAULT_STORAGE_COST, '฿/kWh')
+  // the solar pair and the storage pair sit next to each other so a tab can show/hide one pair cleanly
   fields.append(
     groupLabel('สถานการณ์ (ปรับดูได้)'),
     baseProduced,
     baseConsumed,
     groupLabel('ลงทุนเพิ่ม'),
     solarKw,
-    storageKwh,
     solarCost,
+    storageKwh,
     storageCost,
   )
   const input = (f: HTMLElement) => f.querySelector('input')!
+  // Two tabs split the investment: the Solar tab shows only the solar pair, the Energy Storage tab only
+  // the storage pair. The hidden pair is forced to 0 in the calc, so each tab's payback is that one
+  // investment alone. The scenario levers (ผลิต/ใช้) stay shared, and every input keeps its value
+  // across tab switches because the elements are only hidden, never removed.
+  const solarFields = [solarKw, solarCost]
+  const storageFields = [storageKwh, storageCost]
+  let mode: 'solar' | 'storage' = a.verdict === 'storage' ? 'storage' : 'solar'
 
   const results = wrap.querySelector('[data-results]')!
   const update = (): void => {
     const p: WhatIfParams = {
       baseProduced: num(input(baseProduced).value),
       baseConsumed: num(input(baseConsumed).value),
-      addSolarKw: num(input(solarKw).value),
-      addStorageKwh: num(input(storageKwh).value),
+      addSolarKw: mode === 'solar' ? num(input(solarKw).value) : 0,
+      addStorageKwh: mode === 'storage' ? num(input(storageKwh).value) : 0,
       solarCostPerKw: num(input(solarCost).value),
       storageCostPerKwh: num(input(storageCost).value),
     }
@@ -141,9 +182,25 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
       kpiCard('คืนทุน', payback, '(ประมาณ)'),
     )
   }
+
+  // ── tabs: Solar | Energy Storage ──
+  const tabButtons = [...wrap.querySelectorAll<HTMLButtonElement>('[data-whatif-tabs] .tab')]
+  const setMode = (m: 'solar' | 'storage'): void => {
+    mode = m
+    for (const b of tabButtons) {
+      const on = b.dataset.mode === m
+      b.classList.toggle('on', on)
+      b.setAttribute('aria-selected', String(on))
+    }
+    for (const f of solarFields) f.style.display = m === 'solar' ? '' : 'none'
+    for (const f of storageFields) f.style.display = m === 'storage' ? '' : 'none'
+    update()
+  }
+  for (const b of tabButtons) b.addEventListener('click', () => setMode(b.dataset.mode as 'solar' | 'storage'))
+
   for (const f of [baseProduced, baseConsumed, solarKw, storageKwh, solarCost, storageCost])
     input(f).addEventListener('input', update)
-  update()
+  setMode(mode) // initial render: apply the default tab's visibility + results
 
   return wrap
 }

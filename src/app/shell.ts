@@ -40,6 +40,21 @@ export interface Picker {
   onChange(value: string): void
 }
 
+/**
+ * The date-range side of the filter: a two-button mode toggle (year/month ↔ custom range) plus, in
+ * range mode, two date inputs. `start`/`end` are the current range; `min`/`max` bound the pickers to
+ * the loaded data. The shell only renders the range inputs when `mode === 'range'`.
+ */
+export interface RangeFilter {
+  mode: 'period' | 'range'
+  start: string
+  end: string
+  min: string
+  max: string
+  onModeChange(mode: 'period' | 'range'): void
+  onRangeChange(start: string, end: string): void
+}
+
 /** One unfilled important field: its key (to open the right input), a Thai label, and which tab it lives in. */
 export interface MissingField {
   key: keyof PlantSettings
@@ -60,7 +75,8 @@ export type NavKey = 'dashboard'
 export interface Shell {
   view: HTMLElement
   setHeader(context: string, crumbs: Crumb[]): void
-  setPickers(pickers: Picker[]): void
+  /** Fill the top-right filter: the year/month dropdowns, plus an optional date-range toggle + inputs. */
+  setPickers(pickers: Picker[], filter?: RangeFilter): void
   setFooter(text: string): void
   setActive(nav: NavKey): void
   toast(message: string, kind?: 'info' | 'error'): void
@@ -283,28 +299,77 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
         } else crumbs.append(el('span', 'here', c.label))
       })
     },
-    setPickers(list) {
+    setPickers(list, filter) {
       pickers.replaceChildren()
       // a "ช่วงเวลา" cue + funnel icon marks the group as a filter — otherwise the bare ปี/เดือน
       // dropdowns sit alone top-right and users miss that they change the whole view's time range
-      if (list.length) {
+      if (list.length || filter) {
         const cue = el('span', 'pickers-cue')
         cue.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.filter}"/></svg>`
         cue.append(el('span', '', 'ช่วงเวลา'))
         pickers.append(cue)
       }
-      for (const p of list) {
-        const label = el('label', 'picker')
-        const select = el('select')
-        for (const o of p.options) {
-          const opt = el('option', '', o.label)
-          opt.value = o.value
-          select.append(opt)
+
+      // mode toggle: switch between the year/month dropdowns and a custom date range
+      if (filter) {
+        const toggle = el('div', 'mode-toggle')
+        toggle.setAttribute('role', 'tablist')
+        toggle.setAttribute('aria-label', 'เลือกรูปแบบช่วงเวลา')
+        const modeBtn = (mode: 'period' | 'range', text: string): HTMLButtonElement => {
+          const b = el('button', 'mode-btn', text)
+          b.type = 'button'
+          b.setAttribute('role', 'tab')
+          const on = filter.mode === mode
+          b.classList.toggle('on', on)
+          b.setAttribute('aria-selected', String(on))
+          if (!on) b.addEventListener('click', () => filter.onModeChange(mode))
+          return b
         }
-        select.value = p.value
-        select.addEventListener('change', () => p.onChange(select.value))
-        label.append(el('span', '', p.label), select)
-        pickers.append(label)
+        toggle.append(modeBtn('period', 'ปี/เดือน'), modeBtn('range', 'ช่วงวัน'))
+        pickers.append(toggle)
+      }
+
+      if (!filter || filter.mode === 'period') {
+        for (const p of list) {
+          const label = el('label', 'picker')
+          const select = el('select')
+          for (const o of p.options) {
+            const opt = el('option', '', o.label)
+            opt.value = o.value
+            select.append(opt)
+          }
+          select.value = p.value
+          select.addEventListener('change', () => p.onChange(select.value))
+          label.append(el('span', '', p.label), select)
+          pickers.append(label)
+        }
+      } else {
+        // range mode: two date inputs bounded to the loaded data; commit on either change (swap if reversed)
+        let curStart = filter.start
+        let curEnd = filter.end
+        const commit = (): void => {
+          if (!curStart || !curEnd) return
+          const [s, e] = curStart <= curEnd ? [curStart, curEnd] : [curEnd, curStart]
+          filter.onRangeChange(s, e)
+        }
+        const dateInput = (labelTxt: string, value: string, set: (v: string) => void): HTMLLabelElement => {
+          const label = el('label', 'picker picker-date')
+          const input = el('input')
+          input.type = 'date'
+          input.value = value
+          input.min = filter.min
+          input.max = filter.max
+          input.addEventListener('change', () => {
+            set(input.value)
+            commit()
+          })
+          label.append(el('span', '', labelTxt), input)
+          return label
+        }
+        pickers.append(
+          dateInput('จาก', filter.start, (v) => (curStart = v)),
+          dateInput('ถึง', filter.end, (v) => (curEnd = v)),
+        )
       }
     },
     setFooter(text) {

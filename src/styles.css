@@ -418,6 +418,53 @@ dialog.settings .row.pulse {
   outline: 2px solid var(--amber);
   outline-offset: 1px;
 }
+/* segmented toggle: ปี/เดือน ↔ ช่วงวัน — picks which time filter the pickers below it show */
+.mode-toggle {
+  display: inline-flex;
+  border: 2px solid var(--green);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--paper);
+}
+.mode-btn {
+  font: 800 0.98rem var(--font);
+  padding: 9px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--green);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.mode-btn:hover:not(.on) {
+  background-color: rgba(23, 89, 74, 0.08);
+}
+.mode-btn.on {
+  background: var(--green);
+  color: var(--paper);
+  cursor: default;
+}
+.mode-btn:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+}
+/* custom date-range inputs mirror the select styling (green border, same height) */
+.picker-date input {
+  flex: 1;
+  min-width: 0;
+  font: 800 1.02rem var(--font);
+  padding: 9px 12px;
+  border: 2px solid var(--green);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(17, 24, 23, 0.06);
+}
+.picker-date input:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
 
 .crumbs {
   min-width: 0;
@@ -536,6 +583,37 @@ dialog.settings .row.pulse {
   font-weight: 700;
   font-size: 0.85rem;
   opacity: 0.9;
+}
+
+/* advisor support area: 3 grouped, color-coded cards
+   (green = produce vs use · yellow = where the used power comes from · blue = surplus sold out) */
+.kpi-group {
+  gap: 6px;
+  justify-content: space-evenly;
+}
+.kpi-group .kpi-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kpi-group .label {
+  font-size: clamp(0.9rem, 1.2vw, 1.1rem);
+}
+.kpi-group .value {
+  font-size: clamp(1.3rem, 2.2vw, 2rem);
+}
+.kpi-group.is-green {
+  background: var(--green);
+}
+.kpi-group.is-blue {
+  background: var(--blue);
+}
+.kpi-group.is-yellow {
+  background: var(--amber);
+  color: #2a2000;
+}
+.kpi-group.is-yellow .value {
+  color: #1a1a1a;
 }
 
 .empty {

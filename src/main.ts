@@ -10,7 +10,7 @@ import { monthsOf, yearsOf } from './data/aggregate'
 import { clearSettings, GLOBAL_KEY, loadSettings, missingSettings, REQUIRED_FIELD_SCOPE, saveSettings, settingsFor, type PlantSettings, type SettingsMap } from './data/settings'
 import type { Plant } from './data/types'
 import { go, onRoute, toHash, type Route } from './app/router'
-import { createShell, type Crumb } from './app/shell'
+import { createShell, type Crumb, type RangeFilter } from './app/shell'
 import { installAppIcons } from './app/brand'
 import { applyMerge, mergeInfo, clearStored, loadPlants, openScopedStorage, readEmbedded, savePlants, scopedStorage, storageEstimate } from './app/store'
 import { capturePristine, downloadHtml, downloadBlankOffline, blankOfflineAvailable } from './app/download'
@@ -250,6 +250,32 @@ const last = <T>(a: T[]): T | undefined => a[a.length - 1]
 const displayName = (p: Plant): string => settingsFor(settings, p.id).name ?? p.name
 const viewCtx: ViewCtx = { plants, settings, displayName, open: go }
 const allYears = (): string[] => [...new Set(plants.flatMap((p) => yearsOf(p.daily)))].sort()
+// earliest/latest data date (across all plants, or one plant) — bounds the date-range pickers and is
+// the default "full range". Empty when there is no data yet.
+const dataRange = (list: Plant[] = plants): { min?: string; max?: string } => {
+  const dates = [...new Set(list.flatMap((p) => p.daily.map((d) => d.date)))].sort()
+  return { min: dates[0], max: dates[dates.length - 1] }
+}
+
+// Build the toggle + date-range control for the filter bar. `toRoute` turns a range patch into a full
+// route: `{}` (period mode, drops start/end) or `{ start, end }` (range mode). Switching INTO range
+// mode defaults to the full data span [min, max]; switching out returns to the year/month view.
+function rangeFilter(
+  range: { start: string; end: string } | undefined,
+  min: string,
+  max: string,
+  toRoute: (patch: { start?: string; end?: string }) => Route,
+): RangeFilter {
+  return {
+    mode: range ? 'range' : 'period',
+    start: range?.start ?? min,
+    end: range?.end ?? max,
+    min,
+    max,
+    onModeChange: (m) => go(m === 'range' ? toRoute({ start: min, end: max }) : toRoute({})),
+    onRangeChange: (start, end) => go(toRoute({ start, end })),
+  }
+}
 
 // Thai labels for the important fields the bell reports as missing (the data requested from the Owner)
 const MISSING_LABELS: Partial<Record<keyof PlantSettings, string>> = {
@@ -279,15 +305,17 @@ function render(route: Route): void {
   destroyCharts()
   shell.setActive('dashboard')
   refreshBell()
-  if (route.view === 'overview') return renderOverview(route.year)
+  if (route.view === 'overview') return renderOverview(route)
   const plant = plants.find((p) => p.id === route.plant)
   const years = plant ? yearsOf(plant.daily) : []
   if (!plant || !years.includes(route.year)) {
     shell.toast(plant ? `ไม่มีข้อมูลปี ${route.year} ของ ${displayName(plant)}` : `ไม่พบ Plant "${route.plant}"`, 'error')
     return go({ view: 'overview' })
   }
+  const range = route.start && route.end ? { start: route.start, end: route.end } : undefined
   const months = monthsOf(plant.daily, route.year)
-  const month = route.month && months.includes(`${route.year}-${route.month}`) ? route.month : undefined
+  // a month only applies in the year/month filter; a custom range ignores it
+  const month = !range && route.month && months.includes(`${route.year}-${route.month}`) ? route.month : undefined
   const name = displayName(plant)
   const yearRoute: Route = { view: 'plant', plant: plant.id, year: route.year }
   const crumbs: Crumb[] = [{ label: 'Overview', route: { view: 'overview', year: route.year } }]
@@ -295,46 +323,63 @@ function render(route: Route): void {
   if (month) crumbs.push({ label: `${MONTHS[+month - 1]} ${route.year}` })
 
   const titleName = /^plant\b/i.test(name) ? name : `Plant ${name}`
-  shell.setHeader(month ? `${titleName}, ${MONTHS[+month - 1]} ${route.year}` : `${titleName}, Y${route.year}`, crumbs)
-  shell.setPickers([
-    {
-      label: 'ปี',
-      value: route.year,
-      options: years.map((y) => ({ value: y, label: y })),
-      onChange: (year) => go({ view: 'plant', plant: plant.id, year }),
-    },
-    {
-      label: 'เดือน',
-      value: month ?? '',
-      options: [
-        { value: '', label: 'ทั้งปี' },
-        ...months.map((m) => ({ value: m.slice(5), label: MONTHS[+m.slice(5) - 1] })),
-      ],
-      onChange: (m) => go({ view: 'plant', plant: plant.id, year: route.year, month: m || undefined }),
-    },
-  ])
+  const header = range
+    ? `${titleName}, ${range.start} ถึง ${range.end}`
+    : month
+      ? `${titleName}, ${MONTHS[+month - 1]} ${route.year}`
+      : `${titleName}, Y${route.year}`
+  shell.setHeader(header, crumbs)
+  const dr = dataRange([plant])
+  shell.setPickers(
+    [
+      {
+        label: 'ปี',
+        value: route.year,
+        options: years.map((y) => ({ value: y, label: y })),
+        onChange: (year) => go({ view: 'plant', plant: plant.id, year }),
+      },
+      {
+        label: 'เดือน',
+        value: month ?? '',
+        options: [
+          { value: '', label: 'ทั้งปี' },
+          ...months.map((m) => ({ value: m.slice(5), label: MONTHS[+m.slice(5) - 1] })),
+        ],
+        onChange: (m) => go({ view: 'plant', plant: plant.id, year: route.year, month: m || undefined }),
+      },
+    ],
+    dr.min && dr.max ? rangeFilter(range, dr.min, dr.max, (r) => ({ view: 'plant', plant: plant.id, year: route.year, ...r })) : undefined,
+  )
   setFooter(plant)
-  renderPlant(shell.view, viewCtx, plant, route.year, month)
+  renderPlant(shell.view, viewCtx, plant, route.year, month, range)
 }
 
-function renderOverview(requested?: string): void {
+function renderOverview(route: Extract<Route, { view: 'overview' }>): void {
   const years = allYears()
-  const year = requested && years.includes(requested) ? requested : years[years.length - 1]
-  shell.setHeader(year ? `Overview · ปี ${year}` : 'Overview', [{ label: 'Overview' }])
+  const range = route.start && route.end ? { start: route.start, end: route.end } : undefined
+  const year = range ? undefined : route.year && years.includes(route.year) ? route.year : years[years.length - 1]
+  const header = range ? `Overview · ${range.start} ถึง ${range.end}` : year ? `Overview · ปี ${year}` : 'Overview'
+  shell.setHeader(header, [{ label: 'Overview' }])
   setFooter()
-  if (!year) {
-    shell.setPickers([]) // no blank year picker beside the empty state
+  if (!year && !range) {
+    shell.setPickers([]) // no data yet → no filter beside the welcome screen
     return renderWelcome(shell.view, shell.openImport)
   }
-  shell.setPickers([
-    {
-      label: 'ปี',
-      value: year ?? '',
-      options: years.map((y) => ({ value: y, label: y })),
-      onChange: (y) => go({ view: 'overview', year: y }),
-    },
-  ])
-  overviewView(shell.view, viewCtx, year)
+  const dr = dataRange()
+  shell.setPickers(
+    range
+      ? []
+      : [
+          {
+            label: 'ปี',
+            value: year ?? '',
+            options: years.map((y) => ({ value: y, label: y })),
+            onChange: (y) => go({ view: 'overview', year: y }),
+          },
+        ],
+    dr.min && dr.max ? rangeFilter(range, dr.min, dr.max, (r) => ({ view: 'overview', ...r })) : undefined,
+  )
+  overviewView(shell.view, viewCtx, year ?? '', range)
 }
 
 function setFooter(plant?: Plant): void {
