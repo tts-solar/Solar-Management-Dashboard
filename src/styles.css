@@ -2106,6 +2106,25 @@ dialog.export-dlg::backdrop {
   color: var(--gray);
   font-size: 0.82rem;
 }
+/* ผลิตไฟ/วัน is a read-only readout (measured production + the Solar add-on), not a typed lever */
+.whatif-field input.is-readout {
+  border-color: transparent;
+  background: #eef4f2;
+  color: var(--green);
+  font-weight: 700;
+  cursor: default;
+}
+.whatif-field input.is-readout:focus-visible {
+  outline: none;
+}
+/* caption that explains the readout + the timing caveat */
+.whatif-readout-note {
+  grid-column: 1 / -1;
+  margin-top: -2px;
+  font-size: 0.72rem;
+  color: var(--gray);
+  line-height: 1.45;
+}
 .advisor-note {
   margin: 14px 0 0;
   color: var(--gray);

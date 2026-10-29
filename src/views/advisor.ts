@@ -135,8 +135,14 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     d.textContent = text
     return d
   }
-  // scenario levers (default to the measured averages) — "what if we produced / used this much"
+  // ใช้ไฟ/วัน is an adjustable scenario lever; ผลิตไฟ/วัน is a read-only READOUT (measured production +
+  // the Solar add-on, filled in update()) so the user compares resulting generation against use. It is
+  // NOT a lever — the calc keeps the measured production baseline, so the add-on is never counted twice.
   const baseProduced = field('ผลิตไฟ/วัน', Math.round(a.avgProduced), 'kWh')
+  const baseProducedInput = baseProduced.querySelector('input')!
+  baseProducedInput.readOnly = true
+  baseProducedInput.tabIndex = -1
+  baseProducedInput.classList.add('is-readout')
   const baseConsumed = field('ใช้ไฟ/วัน', Math.round(a.avgConsumed), 'kWh')
   // investment levers (cost money → drive payback)
   const solarKw = field('+ Solar', a.verdict === 'solar' ? a.size : 0, 'kW')
@@ -164,16 +170,31 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
   let mode: 'solar' | 'storage' = a.verdict === 'storage' ? 'storage' : 'solar'
 
   const results = wrap.querySelector('[data-results]')!
+
+  // caption under the fields: explains the ผลิตไฟ/วัน readout + the timing caveat (producing more than
+  // you use does not mean zero grid-buy — production is midday, consumption is evening/night)
+  const readoutNote = document.createElement('div')
+  readoutNote.className = 'whatif-readout-note'
+  readoutNote.textContent =
+    '* "ผลิตไฟ/วัน" = ที่ผลิตเดิม + Solar ที่เพิ่ม · ผลิตมากกว่าใช้ ไม่ได้แปลว่าไม่ต้องซื้อไฟ (ผลิตกลางวัน/ใช้กลางคืน คนละเวลากัน)'
+  fields.append(readoutNote)
+
   const update = (): void => {
+    const addSolarKw = mode === 'solar' ? num(input(solarKw).value) : 0
     const p: WhatIfParams = {
-      baseProduced: num(input(baseProduced).value),
+      // ผลิตไฟ/วัน is a readout, not a lever — keep the measured production baseline so the Solar
+      // add-on (below) is applied once, never double-counted from the field's own displayed total.
+      baseProduced: a.avgProduced,
       baseConsumed: num(input(baseConsumed).value),
-      addSolarKw: mode === 'solar' ? num(input(solarKw).value) : 0,
+      addSolarKw,
       addStorageKwh: mode === 'storage' ? num(input(storageKwh).value) : 0,
       solarCostPerKw: num(input(solarCost).value),
       storageCostPerKwh: num(input(storageCost).value),
     }
     const w = whatIf(a, r, p)
+    // fill the read-only ผลิตไฟ/วัน field with total production = measured + the Solar add-on
+    // (the same newProduced whatIf derives internally)
+    baseProducedInput.value = String(Math.round(a.avgProduced + addSolarKw * r.sunHours * r.performanceRatio))
     const payback = w.paybackYears === null ? '–' : `${w.paybackYears.toFixed(1)} ปี`
     results.replaceChildren(
       kpiCard('ใช้ไฟตัวเองใหม่', pct(w.newSelfConsumption, 0), `(เดิม ${pct(a.selfConsumption, 0)})`),
