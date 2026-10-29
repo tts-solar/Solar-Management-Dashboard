@@ -197,7 +197,7 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     baseProducedInput.value = String(Math.round(a.avgProduced + addSolarKw * r.sunHours * r.performanceRatio))
     const payback = w.paybackYears === null ? '–' : `${w.paybackYears.toFixed(1)} ปี`
     results.replaceChildren(
-      kpiCard('ใช้ไฟตัวเองใหม่', pct(w.newSelfConsumption, 0), `(เดิม ${pct(a.selfConsumption, 0)})`),
+      kpiCard('ใช้ไฟตัวเองใหม่', pct(w.newSelfConsumption, 0), `(พึ่งตัวเอง ${pct(a.selfConsumption, 0)})`),
       kpiCard('ประหยัดค่าไฟ/ปี', baht(w.annualSaving)),
       kpiCard('เงินลงทุน', baht(w.addOnCost)),
       kpiCard('คืนทุน', payback, '(ประมาณ)'),
