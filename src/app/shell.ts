@@ -2,7 +2,7 @@ import { toHash, type Route } from './router'
 import type { PlantSettings } from '../data/settings'
 import { LOGO_DARK } from './brand'
 
-/** App frame: left sidebar (brand + nav) beside a main column of header / view / footer. */
+/** App frame: left sidebar (brand + nav) beside a main column of header / view. */
 
 export interface ShellHandlers {
   /** Open the centered import dialog; `files` pre-fills it (e.g. a drag-drop), else it opens empty. */
@@ -242,8 +242,8 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   })
 
   const view = el('main', 'view')
-  const footer = el('footer', 'bar')
-  main.append(header, view, footer)
+  // footer status bar removed (judged unnecessary); setFooter() below is a no-op.
+  main.append(header, view)
 
   const toastBox = el('div', 'toasts')
   toastBox.setAttribute('role', 'status')
@@ -376,8 +376,8 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
         )
       }
     },
-    setFooter(text) {
-      footer.textContent = text
+    setFooter() {
+      // footer status bar removed — nothing to update
     },
     setActive(nav) {
       for (const key of Object.keys(navLinks) as NavKey[]) navLinks[key].classList.toggle('on', key === nav)
