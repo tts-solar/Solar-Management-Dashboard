@@ -7,10 +7,11 @@ import { Chart, registerables } from 'chart.js'
 import { TreemapController, TreemapElement } from 'chartjs-chart-treemap'
 
 import { monthsOf, yearsOf } from './data/aggregate'
+import { autoBoundary, filterDaily, hasHourly, type DayBoundary, type TimeOfDay } from './data/dayNight'
 import { clearSettings, GLOBAL_KEY, loadSettings, missingSettings, REQUIRED_FIELD_SCOPE, saveSettings, settingsFor, type PlantSettings, type SettingsMap } from './data/settings'
 import type { Plant } from './data/types'
 import { go, onRoute, toHash, type Route } from './app/router'
-import { createShell, type Crumb, type RangeFilter } from './app/shell'
+import { createShell, type Crumb, type RangeFilter, type TodFilter } from './app/shell'
 import { installAppIcons } from './app/brand'
 import { applyMerge, mergeInfo, clearStored, loadPlants, openScopedStorage, readEmbedded, savePlants, scopedStorage, storageEstimate } from './app/store'
 import { capturePristine, downloadHtml, downloadBlankOffline, blankOfflineAvailable } from './app/download'
@@ -51,6 +52,10 @@ let storage: ReturnType<typeof scopedStorage> = null
 const plants: Plant[] = []
 const settings: SettingsMap = {}
 let current: Route = { view: 'overview' }
+// Day/night lens — a view filter orthogonal to the date range, kept in memory (not the URL). 'all' is a
+// no-op. `todBoundary` null = use the production-inferred window; set once the user edits the hour pickers.
+let tod: TimeOfDay = 'all'
+let todBoundary: DayBoundary | null = null
 // The sidebar (and its Import / Settings / Save / Export / Clear buttons) renders synchronously
 // above, but storage loads asynchronously in boot(). A click in that window would run against a
 // null storage — an Import wouldn't persist and a false "can't remember" toast would show. This
@@ -277,6 +282,41 @@ function rangeFilter(
   }
 }
 
+// The daytime window in force: the user-set one, else inferred from these plants' production.
+const effectiveBoundary = (list: Plant[]): DayBoundary => todBoundary ?? autoBoundary(list.flatMap((p) => p.daily))
+
+// Apply the day/night lens: replace each plant's daily rows with the selected part of the day. 'all'
+// returns the plants unchanged (identical arrays), so the default view keeps its exact behaviour. The
+// original plants stay untouched — resolve()/kWp inside a view recompute on the lensed rows, which is
+// what a day/night view should show (night = ~0 production = pure grid dependency).
+function lens(list: Plant[]): Plant[] {
+  if (tod === 'all') return list
+  const b = effectiveBoundary(list)
+  return list.map((p) => ({ ...p, daily: filterDaily(p.daily, tod, b) }))
+}
+
+// The day/night toggle for the filter bar — only when the data carries per-hour bins (plants imported
+// before the feature don't, so they fall back to the whole-day view with no toggle shown).
+function todFilter(list: Plant[]): TodFilter | undefined {
+  if (!hasHourly(list.flatMap((p) => p.daily))) return undefined
+  const b = effectiveBoundary(list)
+  return {
+    period: tod,
+    dayStart: b.start,
+    dayEnd: b.end,
+    auto: todBoundary === null,
+    onPeriodChange: (p) => {
+      tod = p
+      if (p === 'all') todBoundary = null // leaving day/night forgets a hand-set window → back to auto
+      render(current)
+    },
+    onBoundaryChange: (start, end) => {
+      todBoundary = { start, end }
+      render(current)
+    },
+  }
+}
+
 // Thai labels for the important fields the bell reports as missing (the data requested from the Owner)
 const MISSING_LABELS: Partial<Record<keyof PlantSettings, string>> = {
   kWp: 'ขนาดติดตั้ง',
@@ -349,9 +389,10 @@ function render(route: Route): void {
       },
     ],
     dr.min && dr.max ? rangeFilter(range, dr.min, dr.max, (r) => ({ view: 'plant', plant: plant.id, year: route.year, ...r })) : undefined,
+    todFilter([plant]),
   )
   setFooter(plant)
-  renderPlant(shell.view, viewCtx, plant, route.year, month, range)
+  renderPlant(shell.view, viewCtx, lens([plant])[0], route.year, month, range)
 }
 
 function renderOverview(route: Extract<Route, { view: 'overview' }>): void {
@@ -378,8 +419,9 @@ function renderOverview(route: Extract<Route, { view: 'overview' }>): void {
           },
         ],
     dr.min && dr.max ? rangeFilter(range, dr.min, dr.max, (r) => ({ view: 'overview', ...r })) : undefined,
+    todFilter(plants),
   )
-  overviewView(shell.view, viewCtx, year ?? '', range)
+  overviewView(shell.view, { ...viewCtx, plants: lens(plants) }, year ?? '', range)
 }
 
 function setFooter(plant?: Plant): void {

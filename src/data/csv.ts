@@ -1,5 +1,9 @@
-import type { DailyRow, DayProfile, ParseResult } from './types'
+import type { DailyRow, DayProfile, HourBin, ParseResult } from './types'
 import { daysInMonth, pad } from './aggregate'
+
+/** 24 fresh per-hour bins, all zero. */
+const emptyHourly = (): HourBin[] =>
+  Array.from({ length: 24 }, () => ({ produced: 0, consumed: 0, exported: 0, imported: 0, samples: 0 }))
 
 /** Thrown for files the dashboard cannot read; the message is shown to the user. */
 export class CsvError extends Error {}
@@ -148,7 +152,7 @@ export function parseCsv(text: string): ParseResult {
 
     let day = days.get(st.date)
     if (!day) {
-      day = { date: st.date, produced: 0, consumed: 0, exported: 0, imported: 0, peakKw: 0, samples: 0 }
+      day = { date: st.date, produced: 0, consumed: 0, exported: 0, imported: 0, peakKw: 0, samples: 0, hourly: emptyHourly() }
       days.set(st.date, day)
     }
     day.produced += e.produced
@@ -157,6 +161,14 @@ export function parseCsv(text: string): ParseResult {
     day.imported += e.imported
     day.samples++
     day.peakKw = Math.max(day.peakKw, e.produced) // interval kWh for now, converted to kW below
+
+    // fold this interval into its hour-of-day bin too (for the day/night split)
+    const hb = day.hourly![Math.floor(st.minute / 60)]
+    hb.produced += e.produced
+    hb.consumed += e.consumed
+    hb.exported += e.exported
+    hb.imported += e.imported
+    hb.samples++
 
     let slot = slots.get(st.minute)
     if (!slot) {

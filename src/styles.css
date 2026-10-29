@@ -469,6 +469,19 @@ dialog.settings .row.pulse {
   outline: 2px solid var(--amber);
   outline-offset: 1px;
 }
+/* day/night window: two compact hour pickers — don't stretch like the ปี/เดือน dropdowns */
+.tod-window {
+  flex: 0 0 auto;
+}
+.tod-window select {
+  flex: 0 0 auto;
+  padding: 9px 34px 9px 12px;
+  font-size: 1rem;
+}
+.tod-dash {
+  color: var(--gray);
+  font-weight: 800;
+}
 
 .crumbs {
   min-width: 0;

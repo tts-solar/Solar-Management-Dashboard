@@ -1,5 +1,16 @@
 /** Shared data shapes. All energy values are kWh. */
 
+/** One hour of a day's energy (kWh), index 0–23 = hour of day. Lets the dashboard split a day into
+ * daytime/night-time without keeping every raw interval. */
+export interface HourBin {
+  produced: number
+  consumed: number
+  exported: number
+  imported: number
+  /** raw CSV intervals folded into this hour */
+  samples: number
+}
+
 /** One calendar day of energy totals. */
 export interface DailyRow {
   date: string // YYYY-MM-DD
@@ -11,6 +22,8 @@ export interface DailyRow {
   peakKw: number
   /** raw CSV intervals folded into this day */
   samples: number
+  /** 24 per-hour bins (index = hour 0–23); absent on plants imported before the day/night split existed */
+  hourly?: HourBin[]
 }
 
 /** Totals for a month ("YYYY-MM"), year ("YYYY") or any other grouping key. */

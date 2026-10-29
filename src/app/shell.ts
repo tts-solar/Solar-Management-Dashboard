@@ -1,4 +1,5 @@
 import { toHash, type Route } from './router'
+import { pad } from '../data/aggregate'
 import type { PlantSettings } from '../data/settings'
 import { LOGO_DARK } from './brand'
 
@@ -55,6 +56,21 @@ export interface RangeFilter {
   onRangeChange(start: string, end: string): void
 }
 
+/**
+ * The time-of-day side of the filter: a three-way toggle (whole day / daytime / night) plus, when a
+ * daytime or night view is active, two hour pickers for the day window. Orthogonal to the date range —
+ * both narrow the same view. Only shown when the data carries per-hour bins; `auto` flags that the
+ * window was inferred from production (not user-set).
+ */
+export interface TodFilter {
+  period: 'all' | 'day' | 'night'
+  dayStart: number // 0–23
+  dayEnd: number // 1–24
+  auto: boolean
+  onPeriodChange(period: 'all' | 'day' | 'night'): void
+  onBoundaryChange(startHour: number, endHour: number): void
+}
+
 /** One unfilled important field: its key (to open the right input), a Thai label, and which tab it lives in. */
 export interface MissingField {
   key: keyof PlantSettings
@@ -75,8 +91,9 @@ export type NavKey = 'dashboard'
 export interface Shell {
   view: HTMLElement
   setHeader(context: string, crumbs: Crumb[]): void
-  /** Fill the top-right filter: the year/month dropdowns, plus an optional date-range toggle + inputs. */
-  setPickers(pickers: Picker[], filter?: RangeFilter): void
+  /** Fill the top-right filter: the year/month dropdowns, an optional date-range toggle + inputs, and
+   * an optional day/night toggle. */
+  setPickers(pickers: Picker[], filter?: RangeFilter, tod?: TodFilter): void
   setFooter(text: string): void
   setActive(nav: NavKey): void
   toast(message: string, kind?: 'info' | 'error'): void
@@ -303,11 +320,11 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
         } else crumbs.append(el('span', 'here', c.label))
       })
     },
-    setPickers(list, filter) {
+    setPickers(list, filter, tod) {
       pickers.replaceChildren()
       // a "ช่วงเวลา" cue + funnel icon marks the group as a filter — otherwise the bare ปี/เดือน
       // dropdowns sit alone top-right and users miss that they change the whole view's time range
-      if (list.length || filter) {
+      if (list.length || filter || tod) {
         const cue = el('span', 'pickers-cue')
         cue.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.filter}"/></svg>`
         cue.append(el('span', '', 'ช่วงเวลา'))
@@ -374,6 +391,59 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
           dateInput('จาก', filter.start, (v) => (curStart = v)),
           dateInput('ถึง', filter.end, (v) => (curEnd = v)),
         )
+      }
+
+      // day/night toggle — orthogonal to the date range, so it renders on its own regardless of mode
+      if (tod) {
+        const toggle = el('div', 'mode-toggle tod-toggle')
+        toggle.setAttribute('role', 'tablist')
+        toggle.setAttribute('aria-label', 'เลือกช่วงเวลาในวัน')
+        const todBtn = (period: TodFilter['period'], text: string): HTMLButtonElement => {
+          const b = el('button', 'mode-btn', text)
+          b.type = 'button'
+          b.setAttribute('role', 'tab')
+          const on = tod.period === period
+          b.classList.toggle('on', on)
+          b.setAttribute('aria-selected', String(on))
+          if (!on) b.addEventListener('click', () => tod.onPeriodChange(period))
+          return b
+        }
+        toggle.append(todBtn('all', 'ทั้งวัน'), todBtn('day', 'กลางวัน'), todBtn('night', 'กลางคืน'))
+        pickers.append(toggle)
+
+        // when a daytime/night view is active, expose the day window as two hour pickers (default = auto)
+        if (tod.period !== 'all') {
+          const hhLabel = (h: number): string => `${pad(h % 24)}:00`
+          let curStart = tod.dayStart
+          let curEnd = tod.dayEnd
+          const commit = (): void => {
+            // keep the window non-empty: a start at/after end falls back to a 1-hour window
+            if (curStart >= curEnd) curEnd = Math.min(24, curStart + 1)
+            tod.onBoundaryChange(curStart, curEnd)
+          }
+          const hourSelect = (value: number, lo: number, hi: number, set: (v: number) => void): HTMLSelectElement => {
+            const select = el('select')
+            for (let h = lo; h <= hi; h++) {
+              const opt = el('option', '', hhLabel(h))
+              opt.value = String(h)
+              select.append(opt)
+            }
+            select.value = String(value)
+            select.addEventListener('change', () => {
+              set(Number(select.value))
+              commit()
+            })
+            return select
+          }
+          const win = el('label', 'picker tod-window')
+          win.append(el('span', '', tod.auto ? 'กลางวัน (อัตโนมัติ)' : 'กลางวัน'))
+          win.append(
+            hourSelect(tod.dayStart, 0, 23, (v) => (curStart = v)),
+            el('span', 'tod-dash', '–'),
+            hourSelect(tod.dayEnd, 1, 24, (v) => (curEnd = v)),
+          )
+          pickers.append(win)
+        }
       }
     },
     setFooter() {
