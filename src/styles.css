@@ -71,6 +71,10 @@ body {
   width: 100%;
   height: auto;
 }
+/* hamburger toggle: hidden on desktop (the vertical sidebar already shows the nav); shown ≤900px */
+.nav-toggle {
+  display: none;
+}
 .side-nav {
   display: flex;
   flex-direction: column;
@@ -897,15 +901,18 @@ table.data tr.link:focus-visible {
   #app {
     flex-direction: column;
   }
+  #app {
+    overflow-x: clip; /* belt: a stray wide child never scrolls the whole page sideways */
+  }
   .sidebar {
     width: 100%;
     height: auto;
     position: static;
     flex-direction: row;
+    flex-wrap: wrap; /* the nav dropdown wraps onto its own full-width row below the top bar */
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     padding: 10px 14px;
-    overflow-x: auto;
   }
   .brand {
     margin: 0; /* reset the desktop full-bleed bleed — in the top bar the logo is a compact badge */
@@ -919,18 +926,46 @@ table.data tr.link:focus-visible {
     width: auto;
     border-radius: 6px;
   }
-  .side-nav {
-    flex-direction: row;
-    gap: 10px;
+  /* hamburger appears, pinned to the right of the top bar */
+  .nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     margin-left: auto;
+    width: 42px;
+    height: 42px;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+    cursor: pointer;
+  }
+  .nav-toggle svg {
+    width: 24px;
+    height: 24px;
+    fill: currentColor;
+  }
+  /* nav + bottom actions + storage meter collapse into a dropdown, revealed only when .nav-open is set */
+  .side-nav,
+  .nav-group-bottom,
+  .nav-meter {
+    display: none;
+    flex-basis: 100%;
+  }
+  .sidebar.nav-open .side-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .sidebar.nav-open .nav-group-bottom,
+  .sidebar.nav-open .nav-meter {
+    display: flex;
   }
   .nav-group {
-    flex-direction: row;
-    align-items: center;
-    gap: 6px;
-  }
-  .nav-label {
-    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
   }
   .main-wrap {
     min-height: 0;
@@ -963,6 +998,26 @@ table.data tr.link:focus-visible {
   }
   .bep-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  /* filter bar: stack the cue + toggle onto their own rows so the ปี/เดือน selects stay usably wide,
+     instead of being squeezed to a sliver beside the 150px mode toggle */
+  .pickers {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .pickers-cue {
+    flex-basis: 100%;
+  }
+  .mode-toggle {
+    flex: 1 1 100%;
+  }
+  .mode-btn {
+    flex: 1;
+    text-align: center;
+  }
+  .pickers .picker {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 130px;
   }
 }
 

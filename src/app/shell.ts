@@ -80,19 +80,12 @@ export interface Shell {
   setFooter(text: string): void
   setActive(nav: NavKey): void
   toast(message: string, kind?: 'info' | 'error'): void
-  /** Update the sidebar storage meter (offline build only; no-op in the demo). */
+  /** No-op: the sidebar storage meter was removed. Kept so callers need no change. */
   setStorage(used: number, quota: number): void
   /** Open the centered import dialog (e.g. from the welcome screen's button). */
   openImport(): void
   /** Refresh the header bell: badge count + the dropdown list of plants with missing data. */
   setIncomplete(items: IncompletePlant[]): void
-}
-
-/** Human-readable byte size for the storage meter (GB / MB / KB). */
-function fmtBytes(b: number): string {
-  if (b >= 1e9) return `${(b / 1e9).toFixed(1)} GB`
-  if (b >= 1e6) return `${(b / 1e6).toFixed(1)} MB`
-  return `${Math.max(0, Math.round(b / 1e3))} KB`
 }
 
 const ICONS = {
@@ -110,6 +103,8 @@ const ICONS = {
   print: 'M19 8H5a3 3 0 0 0-3 3v6h4v4h12v-4h4v-6a3 3 0 0 0-3-3zm-3 11H8v-5h8v5zm3-8a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM18 3H6v4h12V3z',
   // funnel — labels the year/month pickers as a time filter so users notice they can change the range
   filter: 'M3 4h18v2.6l-6.8 7.1V20l-4.4 2.2v-7.5L3 6.6V4z',
+  // hamburger — collapses the sidebar nav into a dropdown on narrow screens
+  menu: 'M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z',
 }
 
 // toast glyphs — stroke icons (the <svg> sets fill:none, stroke:currentColor)
@@ -180,7 +175,23 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   if (h.onClear) generalGroup.append(actionItem('trash', 'Clear Data', h.onClear, true))
 
   nav.append(menuGroup, generalGroup)
-  sidebar.append(brand, nav)
+
+  // mobile: a hamburger collapses the nav into a dropdown (CSS hides this button on wide screens).
+  const navToggle = el('button', 'nav-toggle')
+  navToggle.type = 'button'
+  navToggle.setAttribute('aria-label', 'เมนู')
+  navToggle.setAttribute('aria-expanded', 'false')
+  navToggle.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS.menu}"/></svg>`
+  const setNavOpen = (open: boolean): void => {
+    sidebar.classList.toggle('nav-open', open)
+    navToggle.setAttribute('aria-expanded', String(open))
+  }
+  navToggle.addEventListener('click', (e) => {
+    e.stopPropagation()
+    setNavOpen(!sidebar.classList.contains('nav-open'))
+  })
+  nav.addEventListener('click', () => setNavOpen(false)) // picking an action closes the dropdown
+  sidebar.append(brand, navToggle, nav)
 
   // Bottom group, on its own just above the storage meter — a different kind of action from the day-to-day
   // data tools above. Demo: the "Blank Offline Copy" handout. Offline: "Save File" (relocated here).
@@ -193,18 +204,8 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
     sidebar.append(bottomGroup)
   }
 
-  // storage meter at the sidebar bottom (both builds — imported/remembered data can fill up either).
-  let meterFill: HTMLElement | null = null
-  let meterText: HTMLElement | null = null
-  {
-    const meter = el('div', 'nav-meter')
-    const bar = el('div', 'nav-meter-bar')
-    meterFill = el('i')
-    bar.append(meterFill)
-    meterText = el('span', 'nav-meter-text', 'พื้นที่เก็บข้อมูล')
-    meter.append(bar, meterText)
-    sidebar.append(meter)
-  }
+  // storage meter removed — the sidebar no longer shows a disk-usage bar (judged unnecessary).
+  // setStorage() below is kept as a no-op so its callers don't need to change.
 
   // ── main column: header / view / footer ──
   const main = el('div', 'main-wrap')
@@ -235,7 +236,10 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
     e.stopPropagation()
     bellMenu.hidden = !bellMenu.hidden
   })
-  root.addEventListener('click', () => (bellMenu.hidden = true)) // click elsewhere closes the menu
+  root.addEventListener('click', () => {
+    bellMenu.hidden = true // click elsewhere closes the bell menu
+    setNavOpen(false) // …and the mobile nav dropdown
+  })
 
   const view = el('main', 'view')
   const footer = el('footer', 'bar')
@@ -379,12 +383,8 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
       for (const key of Object.keys(navLinks) as NavKey[]) navLinks[key].classList.toggle('on', key === nav)
     },
     toast,
-    setStorage(used, quota) {
-      if (!meterFill || !meterText) return // demo build has no meter
-      const pct = quota > 0 ? (used / quota) * 100 : 0
-      meterFill.style.width = `${Math.min(100, pct)}%`
-      meterText.textContent = `ใช้พื้นที่ ${fmtBytes(used)} / ${fmtBytes(quota)}`
-      meterText.parentElement?.classList.toggle('warn', pct >= 80)
+    setStorage() {
+      // storage meter removed from the sidebar — nothing to update
     },
     openImport: () => h.onImport(),
     setIncomplete(items) {
