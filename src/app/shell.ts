@@ -213,8 +213,8 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   })
   nav.addEventListener('click', () => setNavOpen(false)) // picking an action closes the dropdown
 
-  // desktop: a chevron collapses the sidebar to a slim icon rail (and back); the choice is remembered
-  // in this browser. Hidden ≤900px, where the hamburger dropdown handles the narrow layout instead.
+  // desktop: a chevron (shown in the header, outside the sidebar) hides/shows the whole sidebar; the
+  // choice is remembered in this browser. Hidden ≤900px, where the hamburger dropdown handles narrow.
   const COLLAPSE_KEY = 'sm-sidebar-collapsed'
   const collapseBtn = el('button', 'collapse-btn')
   collapseBtn.type = 'button'
@@ -231,7 +231,7 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   }
   collapseBtn.addEventListener('click', () => setCollapsed(!root.classList.contains('nav-collapsed')))
 
-  sidebar.append(collapseBtn, brand, navToggle, nav)
+  sidebar.append(brand, navToggle, nav)
 
   // Bottom group, on its own just above the storage meter — a different kind of action from the day-to-day
   // data tools above. Demo: the "Blank Offline Copy" handout. Offline: "Save File" (relocated here).
@@ -256,7 +256,10 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   const pickers = el('div', 'pickers')
   const headRow = el('div', 'head-row')
   headRow.append(crumbs, pickers)
-  header.append(pageTitle, headRow)
+  // the collapse toggle lives here (outside the sidebar) so it stays reachable once the sidebar is hidden
+  const headMain = el('div', 'top-main')
+  headMain.append(pageTitle, headRow)
+  header.append(collapseBtn, headMain)
 
   // ── bell: "ข้อมูลไม่ครบ" notifier, top-right of the header ──
   const bellWrap = el('div', 'bell-wrap')
