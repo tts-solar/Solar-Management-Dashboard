@@ -443,7 +443,7 @@ dialog.settings .row.pulse {
   fill: currentColor;
 }
 .picker {
-  flex: 1; /* stretch each dropdown so the two together fill the filter bar */
+  flex: 0 1 auto; /* natural width; wrap to a new row when the bar is full, never squash to a sliver */
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -453,8 +453,8 @@ dialog.settings .row.pulse {
   color: var(--gray);
 }
 .picker select {
-  flex: 1;
-  min-width: 0;
+  flex: 0 1 auto;
+  min-width: 104px; /* keep ปี/เดือน readable even when the day/night controls share the bar */
 }
 .picker select {
   appearance: none;
