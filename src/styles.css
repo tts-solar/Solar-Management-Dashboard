@@ -75,6 +75,64 @@ body {
 .nav-toggle {
   display: none;
 }
+/* desktop collapse chevron: shrinks the sidebar to a slim icon rail. Hidden ≤900px (the hamburger
+ * dropdown handles the narrow layout), shown on desktop in the min-width block below. */
+.collapse-btn {
+  display: none;
+  align-self: flex-end;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.collapse-btn:hover,
+.collapse-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.22);
+  outline: none;
+}
+.collapse-btn svg {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.2s ease;
+}
+@media (min-width: 901px) {
+  .collapse-btn {
+    display: inline-flex;
+  }
+  .sidebar {
+    transition: width 0.2s ease, padding 0.2s ease, gap 0.2s ease;
+  }
+  #app.nav-collapsed .sidebar {
+    width: 64px;
+    padding-left: 8px;
+    padding-right: 8px;
+    gap: 12px;
+    align-items: center;
+  }
+  /* on the rail: drop the logo banner and every text label, center the remaining icons */
+  #app.nav-collapsed .brand,
+  #app.nav-collapsed .nav-label,
+  #app.nav-collapsed .nav-item span {
+    display: none;
+  }
+  #app.nav-collapsed .nav-item {
+    justify-content: center;
+    padding: 9px 0;
+  }
+  #app.nav-collapsed .collapse-btn {
+    align-self: center;
+  }
+  #app.nav-collapsed .collapse-btn svg {
+    transform: rotate(180deg); /* chevron flips to point right = expand */
+  }
+}
 .side-nav {
   display: flex;
   flex-direction: column;

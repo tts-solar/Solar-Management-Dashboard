@@ -122,6 +122,8 @@ const ICONS = {
   filter: 'M3 4h18v2.6l-6.8 7.1V20l-4.4 2.2v-7.5L3 6.6V4z',
   // hamburger — collapses the sidebar nav into a dropdown on narrow screens
   menu: 'M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z',
+  // chevron — the desktop collapse/expand toggle (flipped by CSS when the rail is collapsed)
+  chevron: 'M15 6l-6 6 6 6',
 }
 
 // toast glyphs — stroke icons (the <svg> sets fill:none, stroke:currentColor)
@@ -140,6 +142,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 function navItem(icon: keyof typeof ICONS, label: string, route: Route): HTMLAnchorElement {
   const a = el('a', 'nav-item')
   a.href = toHash(route)
+  a.title = label // shows the name as a tooltip when the sidebar is collapsed to an icon rail
   a.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[icon]}"/></svg>`
   a.append(el('span', '', label))
   return a
@@ -149,6 +152,7 @@ function navItem(icon: keyof typeof ICONS, label: string, route: Route): HTMLAnc
 function actionItem(icon: keyof typeof ICONS, label: string, onClick: () => void, danger = false): HTMLButtonElement {
   const b = el('button', danger ? 'nav-item danger' : 'nav-item')
   b.type = 'button'
+  b.title = label // tooltip for the collapsed icon rail
   b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[icon]}"/></svg>`
   b.append(el('span', '', label))
   b.addEventListener('click', onClick)
@@ -208,7 +212,26 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
     setNavOpen(!sidebar.classList.contains('nav-open'))
   })
   nav.addEventListener('click', () => setNavOpen(false)) // picking an action closes the dropdown
-  sidebar.append(brand, navToggle, nav)
+
+  // desktop: a chevron collapses the sidebar to a slim icon rail (and back); the choice is remembered
+  // in this browser. Hidden ≤900px, where the hamburger dropdown handles the narrow layout instead.
+  const COLLAPSE_KEY = 'sm-sidebar-collapsed'
+  const collapseBtn = el('button', 'collapse-btn')
+  collapseBtn.type = 'button'
+  collapseBtn.setAttribute('aria-label', 'ยุบหรือขยายแถบเมนู')
+  collapseBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS.chevron}"/></svg>`
+  const setCollapsed = (collapsed: boolean): void => {
+    root.classList.toggle('nav-collapsed', collapsed)
+    collapseBtn.setAttribute('aria-expanded', String(!collapsed))
+    try {
+      localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0')
+    } catch {
+      // private mode / storage blocked — the toggle still works for this session
+    }
+  }
+  collapseBtn.addEventListener('click', () => setCollapsed(!root.classList.contains('nav-collapsed')))
+
+  sidebar.append(collapseBtn, brand, navToggle, nav)
 
   // Bottom group, on its own just above the storage meter — a different kind of action from the day-to-day
   // data tools above. Demo: the "Blank Offline Copy" handout. Offline: "Save File" (relocated here).
@@ -303,6 +326,13 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
     t.addEventListener('click', () => t.remove()) // tap to dismiss early
     toastBox.append(t)
     setTimeout(() => t.remove(), kind === 'error' ? 8000 : 4000)
+  }
+
+  // restore the remembered collapsed state (desktop only — the CSS ignores .nav-collapsed ≤900px)
+  try {
+    if (localStorage.getItem(COLLAPSE_KEY) === '1') setCollapsed(true)
+  } catch {
+    // storage blocked → start expanded
   }
 
   return {
