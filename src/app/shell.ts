@@ -426,31 +426,46 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
         )
       }
 
-      // day/night toggle — orthogonal to the date range, so it renders on its own regardless of mode
+      // day/night toggle — orthogonal to the date range, so it renders on its own regardless of mode.
+      // Colour-coded 3-way pill: ☀ กลางวัน (amber) · ทั้งวัน (middle) · ☾ กลางคืน (deep indigo).
       if (tod) {
+        // line-art sun/moon (fill:none, stroke:currentColor) so each follows its button's text colour
+        const SUN =
+          '<svg class="tod-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'
+        const MOON =
+          '<svg class="tod-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'
         const toggle = el('div', 'mode-toggle tod-toggle')
         toggle.setAttribute('role', 'tablist')
         toggle.setAttribute('aria-label', 'เลือกช่วงเวลาในวัน')
-        const todBtn = (period: TodFilter['period'], text: string): HTMLButtonElement => {
-          const b = el('button', 'mode-btn', text)
+        const todBtn = (period: TodFilter['period'], text: string, cls: string, icon?: string): HTMLButtonElement => {
+          const b = el('button', `mode-btn ${cls}`)
           b.type = 'button'
           b.setAttribute('role', 'tab')
+          if (icon) b.insertAdjacentHTML('afterbegin', icon)
+          b.append(el('span', '', text))
           const on = tod.period === period
           b.classList.toggle('on', on)
           b.setAttribute('aria-selected', String(on))
           if (!on) b.addEventListener('click', () => tod.onPeriodChange(period))
           return b
         }
-        toggle.append(todBtn('all', 'ทั้งวัน'), todBtn('day', 'กลางวัน'), todBtn('night', 'กลางคืน'))
+        // order (user request): daytime left, whole-day middle, night right
+        toggle.append(
+          todBtn('day', 'กลางวัน', 'tod-day', SUN),
+          todBtn('all', 'ทั้งวัน', 'tod-all'),
+          todBtn('night', 'กลางคืน', 'tod-night', MOON),
+        )
         pickers.append(toggle)
 
-        // when a daytime/night view is active, expose the day window as two hour pickers (default = auto)
+        // daytime/night view active → expose the window as two hour pickers (default = auto from data).
+        // The split is ONE boundary [dayStart, dayEnd); we just label/order the two selects to match the
+        // chosen side — day shows its hours directly, night shows the complement (evening → next morning).
         if (tod.period !== 'all') {
           const hhLabel = (h: number): string => `${pad(h % 24)}:00`
           let curStart = tod.dayStart
           let curEnd = tod.dayEnd
           const commit = (): void => {
-            // keep the window non-empty: a start at/after end falls back to a 1-hour window
+            // keep the daytime window non-empty: a start at/after end falls back to a 1-hour window
             if (curStart >= curEnd) curEnd = Math.min(24, curStart + 1)
             tod.onBoundaryChange(curStart, curEnd)
           }
@@ -468,13 +483,24 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
             })
             return select
           }
-          const win = el('label', 'picker tod-window')
-          win.append(el('span', '', tod.auto ? 'กลางวัน (อัตโนมัติ)' : 'กลางวัน'))
-          win.append(
-            hourSelect(tod.dayStart, 0, 23, (v) => (curStart = v)),
-            el('span', 'tod-dash', '–'),
-            hourSelect(tod.dayEnd, 1, 24, (v) => (curEnd = v)),
-          )
+          const night = tod.period === 'night'
+          const win = el('label', `picker tod-window ${night ? 'tod-window-night' : ''}`)
+          const label = night ? 'กลางคืน' : 'กลางวัน'
+          win.append(el('span', '', tod.auto ? `${label} (อัตโนมัติ)` : label))
+          if (night) {
+            // night = outside the day window: from when daytime ends to when it next begins (18:00 – 07:00)
+            win.append(
+              hourSelect(tod.dayEnd, 1, 24, (v) => (curEnd = v)),
+              el('span', 'tod-dash', '–'),
+              hourSelect(tod.dayStart, 0, 23, (v) => (curStart = v)),
+            )
+          } else {
+            win.append(
+              hourSelect(tod.dayStart, 0, 23, (v) => (curStart = v)),
+              el('span', 'tod-dash', '–'),
+              hourSelect(tod.dayEnd, 1, 24, (v) => (curEnd = v)),
+            )
+          }
           pickers.append(win)
         }
       }

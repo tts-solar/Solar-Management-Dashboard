@@ -517,6 +517,33 @@ dialog.settings .row.pulse {
   outline: none;
   box-shadow: 0 0 0 3px rgba(242, 169, 59, 0.55);
 }
+/* day/night pill: colour-codes the meaning — ☀ amber for daytime, ☾ deep indigo for night */
+.tod-toggle .mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.tod-ic {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.tod-day:not(.on) .tod-ic {
+  color: var(--amber); /* hint the meaning even when unselected */
+}
+.tod-night:not(.on) .tod-ic {
+  color: #3d3a6b;
+}
+.tod-day.on {
+  background: var(--amber);
+  color: #3a2a00;
+  box-shadow: 0 1px 3px rgba(242, 169, 59, 0.5);
+}
+.tod-night.on {
+  background: #2b2a52; /* deep indigo = night */
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(43, 42, 82, 0.45);
+}
 /* custom date-range inputs mirror the select styling (soft border, same height) */
 .picker-date input {
   flex: 1;
