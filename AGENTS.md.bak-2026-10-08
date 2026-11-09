@@ -1,0 +1,214 @@
+# Agent Orientation — Asset Plan · ALL agents
+> Framework/library read-first hints are domain-specific → see the active domain pack `## framework` (domain/<name>.md).
+> Constraints → `CLAUDE.md` · Gates → `INVARIANTS.md` · Structure → `REPO_MAP.md` · Domain layer → `domain/<active>.md`
+
+---
+
+## Boot Sequence (3 tool calls max)
+
+```
+[B1] Boot Init — DETERMINISTIC 2-form launcher (T-491 · C2). `boot_init.py` is the ONE cross-platform core (all boot logic); `boot_init.sh`/`boot_init.ps1` are thin shims that only resolve a Python interpreter + hand off (zero logic). Pick the form from the runtime you ALREADY know — the client Platform stated in this system prompt / detected.md `os:` (T-490) — never by guessing:
+     • FORM A — bash (Mac/Linux/Git-Bash · the DEFAULT · use whenever a Bash tool exists): `BI=scripts/boot_init.sh; [ -f "$BI" ] || BI="$CLAUDE_PLUGIN_ROOT/scripts/boot_init.sh"; [ -f "$BI" ] || BI="$(command ls -t ~/.claude/plugins/cache/*/harness-agent/*/scripts/boot_init.sh 2>/dev/null | head -1)"; { [ -f "$BI" ] && bash "$BI" || echo "[boot-FAILED] engine unreachable — boot_init.sh not found (local/plugin-root/plugin-cache all missed); harness enforcement may be OFF — run the manual checklist, do NOT assume ad-hoc is allowed"; }`  (resolve order: local `scripts/` → `$CLAUDE_PLUGIN_ROOT` → plugin-cache glob · `$CLAUDE_PLUGIN_ROOT` is EMPTY in a plain Bash tool call, so the glob fallback is what works for a plugin-only project (verified T-314) · the .sh shim execs boot_init.py, which self-locates ENGINE from its own file path so `$ENG` never 404s.)
+     • FORM B — PowerShell (native Windows WITHOUT Git-Bash · `os:win32` + no Bash tool): self-hosted → `powershell -File scripts/boot_init.ps1` · plugin-only → `powershell -Command "& { $p = Get-ChildItem $HOME\.claude\plugins\cache\*\harness-agent\*\scripts\boot_init.ps1 -EA SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1; if ($p) { & $p.FullName } else { Write-Error '[boot-FAILED] engine unreachable — boot_init.ps1 not found; harness enforcement may be OFF — run the manual checklist, do NOT assume ad-hoc is allowed' } }"`. The .ps1 shim execs the SAME boot_init.py core (identical trace).
+     Chicken-and-egg (which form, before boot has told you anything?): you already know the OS at turn 0 — it is the client Platform in this system prompt (and, once booted, detected.md `os:`). Choose FORM A when a Bash tool exists (Mac/Linux/Git-Bash); FORM B only for native Windows with no Bash. Running FORM A on a box with no `bash` fails LOUDLY (`bash: command not found` / the [boot-FAILED] line), a self-explaining first failure — install Git for Windows OR switch to FORM B — never a silent no-op. Both forms emit the same trace: [compact-restore] if any · active_thread tail · session_tokens · roadmap [/] · CFP_COUNT.
+     → B1 internals (reset branches · CHAT formula · LOOP_WEIGHT normalization · cache breakpoint · compact_reset.py single-source sync): **Implement/07_platform.md §Boot Init**
+[B2] IF [compact-restore]: parse sk= → skill_name · parse section= + step= → resume_hint · SKIP manifest read
+     IF prompt has `skill: <name>`: use directly · SKIP manifest
+     ELSE: grep -B1 -A6 '"keywords"' .agents/skills/skill-manifest.json | head -160 → assess keyword overlap with user prompt:
+             ≥1 keyword aligns with user intent → emit [skill-match] skill:<name> · keyword:<matched> · then emit [skill-active] <name>
+             >1 skill matches → prefer the one whose `activates_at` best fits the trigger phrase · still tied → pick last in manifest order + emit [skill-match-tie] skills:<A,B> → chose:<A> (deterministic — removes the multi-match stall · T-234)
+             no keyword aligns → emit [skill-miss] · default: agent (manifest fallback) · note reason
+             (cannot silently proceed — [skill-miss] is a forcing function: agent MUST name default + reason)
+             confirmed match used ≥2 turns → may append to manifest learned_routes[].examples (optional · never required)
+[B3] Let <ENG> = the abs path printed on B1's `[engine-root]` line (quote it — may contain spaces). Read engine skills by SHELLING OUT to read_skill.py (code-resolves ENGINE_ROOT + fails LOUD on 404), substituting <ENG> literally each Bash call — NEVER a bare project-relative `Read .agents/skills/...`, which silently 404s in a plugin-only project with no local engine copy (T-314 S1 · HALT-1).
+     IF [compact-restore]: sha1sum "<ENG>/.agents/skills/<bucket>/<skill>/SKILL.md" → compare sk_h · sha1sum "<ENG>/.agents/skills/harness/mece/SKILL.md" → compare mece_h
+       match → SKIP read (~2.9k tokens saved) | mismatch → run the Bash read below
+     ELSE: Bash `python3 "<ENG>/scripts/read_skill.py" <bucket>/<skill_name> 1 80`  (path from manifest — skills bucketed under harness/ knowledge/ content/ coding/ user/ · lines 1–80)
+           Bash `python3 "<ENG>/scripts/read_skill.py" harness/mece 31 140`  (mece SKILL.md lines 31–140)
+> **Native skills (T-347):** the 24 human-invocable harness skills are ALSO exposed as native Claude Code plugin skills — user-invocable as `/harness-agent:<name>` (they show in the `/` menu). They are GENERATED into `<repo-root>/skills/<name>/SKILL.md` by `scripts/gen_native_skills.py` from the `.agents/skills/` source (SINGLE SOURCE), so **never hand-edit `skills/`** — edit the `.agents/skills/` source, then `scripts/release.py` regenerates + drift-checks them. Each carries `disable-model-invocation: true`, so the manifest above stays the SOLE auto-router (native = discovery + manual invocation only, no second auto-router). NOTE: `Skill(<bare-name>)` still will NOT match a harness skill — invoke `/harness-agent:<name>` or load via the read_skill.py path above. The 5 always-on/headless skills (token_tracker · identity · token_auditor · loop_engineer · agent) are intentionally NOT bridged.
+> **Constitution DETAIL is an engine read (T-348):** the same `<ENG>` rule applies to the constitution DETAIL docs — every `Implement/*.md` and `docs/session_templates/*.md` reference in this constitution is an ENGINE file, not project-local. Plugin-only project → Read them from `<ENG>` (e.g. `"<ENG>/Implement/03_config.md"`, `"<ENG>/docs/session_templates/mece_plan_schema.md"`); self-hosted → read as-is. Single source = the CLAUDE.md §R5 DOCS companion rule — no per-project copies (Model B · central engine).
+```
+- B1 internals (reset branches · CHAT/sys_fixed formula · compact_reset.py single-source · LOOP_WEIGHT normalization · cache breakpoint · session_tokens.md format): **Implement/07_platform.md §Boot Init**
+- on_demand_files = lookup table for G2 only — NEVER auto-load at B3
+- mece_plan.md has pending sections? Skip Phase 1+2 → resume Phase 3:
+  `grep -n "^\- \[ \]\|^\- \[/\]" .sessions/mece_plan.md | head -3` → first pending item
+  Resume staleness gate (V3): `sha1sum .sessions/mece_plan.md | cut -c1-8` vs mece_plan_hash in session_handoff.md · `git status src/` → emit [plan-stale] if either differs
+
+[B4] Platform Probe: `detected.md` platform: unknown → list tools → update detected.md · else skip
+     OS sub-probe (fills `os:` — run when `os:` missing OR =unknown · else skip · sibling of the provider sub-probe below): `python3 -c "import sys;p=sys.platform;print('win32' if p.startswith('win') else 'darwin' if p=='darwin' else 'linux')"` → write `os:` to detected.md. Deterministic · uses Python (NOT bash `uname`) so it resolves on native Windows too. WHY Python-not-bash + who reads `os:`: Implement/07_platform.md §How Detection Works (single source).
+     Provider sub-probe (fills api_provider + 4 profile fields — run when `api_provider:` missing OR =unknown · else skip):
+       step 1 — map platform→provider: claude-code→anthropic · antigravity→(per host model id, step 2) · else → step 2
+       step 2 — model-id heuristic: id contains `claude`→anthropic · `gpt`/`o[0-9]`→openai · `gemini`→google · else → step 3
+       step 3 — unresolved → set `api_provider: unknown`
+     Fill: copy the matching row from `## Known Provider Profiles` table into the active fields →
+           api_provider / cache_mechanism / context_cliff_tokens / token_formula / cache_write_cost
+     Fill (model-aware · from `## Known Model Windows + Tokenizers`): set by the ACTIVE model id →
+           context_window (Opus4.8/4.7/4.6 · Sonnet4.6 · Fable5 = 1000000 · Haiku4.5 = 200000) · tokenizer (Opus4.7/4.8 + Fable5 = opus-4.7-family · others re-baseline via count_tokens). token_budget = USER policy (default 128000), set once — NOT model-derived. context_window (real ceiling) and token_budget (spend cap) stay DISTINCT.
+       unknown → `token_formula: generic` · `cache_mechanism: none` · `context_cliff_tokens: 200000` (conservative floor) · `context_window: 200000` (conservative floor) —
+       NEVER apply one provider's cache rule to another (generic fallback only · §R1 + Implement/03_config.md §Provider Profiles)
+     (deterministic — a MODEL_MEDIUM agent runs steps 1-3 + Fill with no chat history + no inference)
+
+Reply line 1: `**[Boot]** Thread: <done|in_progress> · Tasks: <N> · Skill: <name> · Sections: <N> · Tokens: ~<N>k · CFP: <N>`
+Emit after Boot reply: `[skill-active] <name>` — repeat at start of every turn while skill is loaded (user sees active skill in every response log)
+compact-restore reply: append ` · Resume: S<N> — <step>` when section= + step= fields present in compact_state.md
+
+> Boot ending ≠ ready to work. Run C0–C3 → Phase 1 next. SKILL.md load ≠ Phase 1.
+
+---
+
+## Per-Turn Routing (every message)
+
+**Run C0→C1→C2→C3 before any work. No exceptions.** (C0 = 4-question gate; the token check is C0's Q3, formerly C0.5.)
+> No task-size exception — see CLAUDE.md §Boot Gate (T-443). "Looks small / quick / conversational" is not a skip condition.
+
+```
+[C0] Pre-work gate — 4 questions, resolve in order (c0_resolved=true in memory → clear flag → skip to C1):
+     Q1 compact-confirm? bare "compact แล้ว / compacted / เคลียร์แล้ว / compact เสร็จแล้ว" → run `python3 scripts/compact_reset.py --trigger=user-confirm` → surface its [compact-reset] line → C1. (claude-code also auto-resets via the SessionStart:compact hook; this is the fallback + manual re-sync.) · plugin-only → `<ENG>/scripts/compact_reset.py` (R5 engine-script rule)
+     Q2 complaint? "ลืม / you skipped / didn't log / harness says" + a harness step name (roadmap/CFP/index/pre-read/session/boot/skill/gate/MECE) — OR a WHOLE-harness complaint (no specific step named · full trigger list + examples + "match intent, not the literal string" per CLAUDE.md §R16 Signals) → R16 self-improve → set c0_resolved=true → C1. ("ลืมบอกให้เพิ่ม X" = feature request → not C0, pass to C1.) A SILENT harness anomaly — no complaint here, no error at R9 — is instead auto-triaged by the T-484 suspicion trigger (`scripts/anomaly_doctor.py`, ADVISORY, Stop hook) → see CLAUDE.md §R16 "Suspicion trigger".
+     Q3 compact warranted now? (the token gate · formerly the separate C0.5) PRIMARY = signal-box N/4 from the UserPromptSubmit hook (turns≥20 · files_read≥5 · long_outputs≥3 · steps_left≥3 · T-221): N≥2 → [compact-rec] strong (a choice, NOT a STOP). NO HARD STOP from the estimate (T-286): even at window-anchored eff (CHAT×1.75) ≥90%·token_budget(128k) AND signal-box ≥2 → advisory [compact-rec] pointing to the CLIENT METER (real %) — the estimate is a LOWER BOUND and NEVER stops the session; the client meter is the single source for any ceiling/compact decision · token_budget(128k)=per-room spend cap, distinct from context_window(1M, detected.md). **estimate=advisory · real=block (T-391):** the estimate never stops the loop, but the REAL number (CHAT_SRC=real) is HARD-enforced — `context_ceiling_gate.py` (PreToolUse) blocks tool calls at real context ≥ ceiling (`detected.md context_ceiling:` default 200000 · +50000 step per user-ack in `.sessions/.context_ceiling_ack` · `.sessions/` writes exempt · spawned-subagent (`CLAUDE_CODE_CHILD_SESSION`) exempt (never booted + real_context reads the PARENT's transcript · T-428) · escape `HARNESS_SKIP_CONTEXT_CEILING=1`) → HALT + ask (interactive) / escalate to review_queue + loop_paused (headless · never self-confirm) · compact_reset.py clears the ack so the base ask returns post-/compact. SECONDARY char-estimate (lower bound): CHAT >80k or LOOP_W >50 → [compact-note] light hint only. → 5-field [compact-rec] template · precedence (ceiling>strong>light) · stuck-counter guard · start-of-turn snapshot lags ≤1 turn so grep LIVE `.sessions/session_tokens.md` at any DECISION/heavy-tool turn (CFP-041/T-235 · provider-aware reset): **Implement/03_config.md §Per-Turn**.
+     Q4 scope-grill invoked? (T-228) user message contains a scope-grill trigger — Thai "เจาะ scope" / "scope ก่อน" / "ซัก scope" · EN "scope-grill" / "grill scope" → set scope_grill=armed → on reaching Phase 1, force ACTIVE G0 (run the G0 questions even if the skip-when-clear condition is met) + add the out-of-scope question, then persist the filled brief (incl. out_of_scope) to gather_complete.md before G1. Detected here at C0 — BEFORE the G0-skip decision — so the trigger can never be lost to a "task looks clear → skip G0" shortcut. → active-G0 mechanics: **Implement/03_config.md §G0**.
+     none → C1.
+
+[C1] Read active_thread.md → extract task: field
+[C2] Compare new topic vs task:
+     → different topic → TOPIC SWITCH (→ C3)
+     → same topic: check mece_plan.md for pending sections matching current task:
+         no pending [ ] or [/] sections, OR status:task-complete, OR task field doesn't match → NEW TASK (force Phase 1+2 · skip Phase 0 if same chat)
+         pending [ ] or [/] found + task matches → resume Phase 3 (→ C3 stay)
+[C3] TOPIC SWITCH:
+       (a) Emit [topic-switch] Current: `<task>` · New: `<topic>` · Closing first
+       (b) session_manager §3 (5-file close + SESSION_TOTAL reset to 0)
+       (c) Check provider: `grep "^platform:" .agents/platform/detected.md`
+           claude-code → /compact → Phase 1 fresh same chat
+           other       → write compact_state.md → emit "Session ปิดแล้ว — เปิด chat ใหม่ได้เลยครับ" → STOP
+     SAME: re-read SKILL.md ONLY if skill changes (compare to cached skill_name)
+```
+
+→ if C2 detects topic change: emit `[topic-switch] Current: <task> · New: <topic>` → session_manager §3 · claude-code → /compact → Phase 1 · other → compact_state.md → STOP · skip = [violation] C3-skip
+**IS switch:** different section/entity/intent/feature/path · **NOT:** additive/"also"/continue/same-task-bug · **Uncertain:** `[topic-unclear]` → wait
+> After C3 → Phase 1 mandatory.
+
+---
+
+## Loop Architecture
+
+**Phases 1–2 run ONCE per task. On resume: skip to Phase 3 at pending section.**
+
+| Phase | What happens |
+|---|---|
+| 1 Info Gather | G1 scan all sections → G2 batch greps+reads → G3 assess · emit [✓ gather] |
+| 2 MECE Plan | Plan + Verify-N → user confirms → roadmap → mece_plan.md |
+| 3 Execution | REACT LOOP: Select → Execute → Observe → Verify → Decide |
+
+> **Dynamic fan-out (run-time · anywhere · T-481):** parallelism is NOT limited to a pre-declared Phase-3 cycle. At ANY point where ≥2 independent units are queued, the Orchestrator may run a 4-check gate — (1) ≥2 independent units · (2) no shared WRITE target (reads always parallel-safe) · (3) each unit ≥ a size floor (~≥3 tool calls) · (4) latency worth it — and if all pass, spawn a parallel batch with a barrier, REUSING the §14d cycle machinery (no new schema). A shared-WRITE output routes through **map-reduce** (parallel draft into own files → one serial merge). Single source: **Implement/06_orchestrator.md §14f**.
+
+---
+
+### Phase 1 · Info Gather
+
+G0 (clarity gate) → G1 (1-pass scan) → G2 (batch grep+read) → G3 (assess) → [✓ gather] → write gather_complete.md
+→ Full G0–G3 detail + limits + refusal contract: **Implement/03_config.md §Loop Architecture**
+> **Frontier clarify (T-483):** G0 asks a NUMBERED *frontier* — only the questions answerable now, each with a recommended default — and stops when the frontier is EMPTY (completeness, not a round count), with `max_clarification_rounds: 5` kept as a SAFETY BACKSTOP. Single source: **Implement/03_config.md §G0** (no logic here — pointer only).
+> **KB-discovery-first (T-435):** G1/G2 MUST include a KB consult — `python3 scripts/lookup.py <topic>` — and gather_complete.md MUST carry a `[kb-consulted]` line, or `phase_gate.py` blocks the first edit. Authoring surfaces (roadmap/plan/ticket) enforce the same read-before-write. SINGLE SOURCE → CLAUDE.md §Phase Transition (KB-discovery-first).
+
+Key rules: G2 = 1 Bash call · user ask = 1 message · max 3 loops · max 5 clarification rounds
+[post-read] verdict after every Read: irrelevant→DROP · partial→excerpt · relevant→keep
+
+---
+
+### Phase 2 · MECE Plan
+
+[M1] Read mece/SKILL.md → [M1.5] dependency_map + risk_flags + compact_checkpoint (≥3 sections → insert after ceil(N/2)) → [M2] build plan + Verify-N → [M3] Read docs/session_templates/mece_plan_schema.md → copy structure → fill task content → write gather_complete.md + write mece_plan.md (Phase 0-3 template mandatory · NEVER write from memory — CFP-019) → [M4] MANDATORY Skeptical Reviewer (auto · T-350 · runs the moment mece_plan.md is written · also greps knowledge/out_of_scope.md → already-rejected guard · appends on a permanent `reject` · T-224) → **Gate 3** auto-stamps `.sessions/.skeptical_ok` + HARD-BLOCKS the first Phase-3 edit if skeptical_reviewer was never loaded → emit `[sr-done] verdict:<go|revise|reject>` · FULL mechanism (auto-stamp · hash-tie · `[skeptical-gate] BLOCKED` · escape) → **CLAUDE.md §Review Gates** · canon **Implement/04_skills.md §MECE** → [M5] present plan to user → wait explicit confirm → [M6] roadmap: parent Task only (a NEW parent Task = full §6.2 block — Title/ContextTask/Goal/How-Check; schema: loop_engineer_spec.md §6.2 · NEVER per section — roadmap is big-task-only; usually already registered → just [X] at close) → [M7] emit [✓ MECE]
+→ Full M1–M7 detail + compact_checkpoint formula: **Implement/04_skills.md §MECE Planner**
+
+→ at M2: grep `activates_at` + `tools` per skill from manifest (grep only — never Read full manifest) → fill Tool:/Avoid: per section · skip = manifest-routing-miss
+→ at M2 (ownership · T-362): each section's `Skill:` MUST be an owner of that section's `File:` (per manifest `owns_paths`). Why: skill_gate Gate 1 authorizes a wave/spawn worker's edit to an owned path FROM this pairing (plan Skill: ∈ owners(File)) — so a mis-assigned Skill: makes the loop stall at that edit. plan_lint flags a `SKILL-OWNER-MISMATCH` at plan time. Ownership stays SOLELY in the manifest (derived, never copied into the plan).
+→ at M3: Read mece_plan_schema.md → Write gather_complete.md → Write mece_plan.md → THEN present plan (M5) · writing from memory = CFP-019 · presenting without files written = CFP-027
+
+**M3 verify** (after writing mece_plan.md, before presenting to user): assess mece_plan.md is structurally complete — all Phase 0–3 blocks · Verify-N per Phase 3 section · compact_checkpoint if sections ≥3 · Phase 3 Close Checklist block. Complete → emit `[mece-schema-check] Phase2:ok · Verify-N:ok · checkpoint:ok · close-checklist:ok` → then present plan (M5). Gap found → re-read mece_plan_schema.md → rewrite missing block → re-assess. Final [✓ MECE] emitted at M7 after roadmap.
+
+**mece-compact** (after [✓ MECE]): emit `[mece-complete]` summary (task · sections · files · Verify-N count) + prompt "/compact แล้ว reply 'ลุย' เพื่อเริ่ม Phase 3 ครับ". Prefer starting Phase 3 in fresh context. If the user says "ลุย" directly without /compact → emit `[compact-skipped]` · proceed (fine).
+
+MECE runs ONCE. On resume: load existing plan → jump to first pending [ ] section.
+
+---
+
+### Phase 3 · Execution Loop
+
+**OUTER — cycle loop** (drives the plan's `### Cycle grouping`): for each cycle top→bottom → read that cycle's sections → **spawn every section in the cycle in ONE message** (parallel per cycle) → BARRIER: wait until every `.sessions/cycle_<N>_*.json` shows `status:done` → advance to the next cycle. A cycle of one = serial/inline: run the INNER loop in main context, no spawn. → full cycle grouping + result-file schema + the loop (single source): **Implement/06_orchestrator.md §14c/§14d**.
+**Delegation default** (T-328 · the `Model:` field is BINDING, not decorative — enforced by `scripts/spawn_gate.py`, NOT prose): a section whose `Model:` is `model_low` OR `model_medium` → delegate it (spawn Agent `model=<tier>` via the `delegate` skill) so it runs on haiku / sonnet, NOT inline-on-opus — this is the fix for "the cheap tiers never fire". The safety-list ALWAYS wins: a section carrying a MAIN marker (sensitive / core-file / judgment — e.g. `.claude/settings.json`, core routing prose) runs in MAIN context on opus, NEVER delegated, even if labelled model_medium. `model_high` runs in main by default. A genuinely 1–2 line standalone is NOT a lone section → Small-Tasks Pool (grain rule); ≥2 same-tier mechanical sections batch into ONE spawn (amortize the spawn overhead). Hard enforcement: `spawn_gate.py` BLOCKS marking a delegated section `[X]` without its spawn proof `.sessions/cycle_<N>_<S>.json`. Emit `[cycle N] spawned: S<x>(<model>)·… · parallel:<k>` + per-section `[model] <tier> · <reason>` at each cycle start (spawn signal defined in orchestrator §14d — single source). **Non-spawn hard-emit (T-400):** the `[model]` emit is soft/prose; its script backstop is `spawn_gate.py` at the `[X]` mark — a section that closes WITHOUT spawning now surfaces `[not-spawned] S<N> · reason:<why>` (A `missing-spawn-proof` = hard block; B `declared-MAIN(<why>)` = allowed but visible), and `plan_lint.py --hook` surfaces plan-wide `[tier-dormant]` at that same `[X]` moment. An unintentional non-spawn can no longer pass unannounced (detail: orchestrator §14d).
+
+**INNER — REACT LOOP (per section)**: **[L1] Select → [L2] Execute → [L3] Observe → [L4] Verify → [L4.5] Purge → [L5] Decide** · repeat until section_complete OR token pause. HOT triggers (fire every loop — never lazy-load):
+- [L1] section START → MUST emit `[model] <tier> · <reason>` (spawned OR inline · inline NOT exempt · T-328) — makes a silent fall-to-opus visible · signal DEFINED in orchestrator §14d, never re-defined here
+- [L1] next tool = Read → MUST emit `[pre-read] Target · Line` FIRST (CFP-034)
+- [L4] mark mece_plan `[ ] S<N>` → `[X]` ONLY when `[✓ written]` AND Verify-N both pass (file write, not memory) AND a LIGHT per-section scrutinize ran (auto · T-350) → **Gate 4** auto-stamps `.sessions/.scrutinize_log` (`S<N>|<hash>`) + emits `[scrutinized S<N>]` + HARD-BLOCKS the `[X]` if scrutinize was never loaded · FULL scrutinize still runs once at close · FULL (today-set · `[scrutinize-gate] BLOCKED`) → **CLAUDE.md §Review Gates**
+- [L4.8] independent correctness check (doer≠checker · auto · T-423): a **code_root** section spawns a FRESH-CONTEXT OUTSIDER to review the diff → `.sessions/codecheck_S<N>.json` (`verdict:confirm|concern`) BEFORE `[X]`; **Gate 5** (`skill_gate.py`) HARD-BLOCKS a missing/invalid confirm → `[codecheck-gate] BLOCKED` · non-code-root skips. FULL mechanism (Class A/B fail-closed · `[codecheck-machinery-down]` · `.codecheck_override` · escapes) = **CLAUDE.md §Review Gates** · canon **Implement/06_orchestrator.md §14d [L4.8]**. Pointer, not a re-definition.
+- [L4.8b] behavioural Case-Test by DEFAULT (T-498/T-500): every non-trivial section declares `Behavior: assert|eval|none` (code_root DEFAULTS to assert · a refactor/mechanism code_root section may declare `none` + an audited `BehaviorReason:`); `Behavior: assert` HARD-BLOCKS `[X]` without a valid blind proof `.sessions/casetest_S<N>.json` (**Gate 6**) → `[casetest-gate] BLOCKED` · `eval` = non-blocking micro-eval. FULL rule = **CLAUDE.md §Review Gates** · SINGLE-SOURCE canon **knowledge/loop_engineer_spec.md §Behavioral Case Task**. Pointer, not a re-definition.
+- [L4.5] PURGE: after EVERY tool result emit ONE of `[dropped]` / `[kept: N lines]` / `[offloaded]` · silent keep = [violation] BC-L4.5-purge
+- `[headroom] <technique>: <what> · saved ~N lines` — DETERMINISTIC emit from `safe_run.py` when an automated compressor fires (view-compress T-302 · offload T-301). Surface it so the user can verify headroom ran. Distinct LAYER from the manual purge signals above (agent judgment on one result). Boundary (single-source): compression only — selective-read range-trim keeps `[pre-read]`; topic/label lookup is NOT headroom.
+- **Auto-nudge (T-344 · Context-send Standard):** headroom is now AUTOMATIC too — the `headroom_hook.py` PostToolUse hook fires on any Bash whose output >80 lines: it parks a lossless copy + injects a `[headroom]` additionalContext reminder (it CANNOT rewrite the output the model already read — a PostToolUse hook cannot replace tool output in Claude Code; S0 spike proved this). So the nudge is a habit-builder + retrievable-copy pointer; the real savings come from heeding it — route big commands through `safe_run.py` and read index-first (R5) so large output never enters context in the first place. Manual `safe_run.py` stays the primary lever; the hook makes the standard visible.
+- **Pre-enforced (T-392 · `scripts/headroom_gate.py` · PreToolUse Bash|Read):** hard-blocks the 3 pre-sizable headroom cases (Door 1a `cat` big file · Door 1b known-verbose command · Door 2 `Read` >50KB no offset/limit) → route through `safe_run.py` / ranged-read · `.sessions/` exempt · `HARNESS_SKIP_HEADROOM_GATE=1` escape · headless→escalate · unpredictable output → T-344 nudge. Full rule (door mechanics · fail-open · size basis) = **CLAUDE.md §Never-Full-Load + Implement/03_config.md §R10** (single source).
+- after each section → write session_handoff.md (sections_done · resume_at=S<N> · mece_plan_hash=`sha1sum .sessions/mece_plan.md | cut -c1-8`)
+- Token: SESSION >60k → finish step → `[token-pause]` · 80-90k → strong `[compact-rec]` (per Implement/03_config.md §R3) · thresholds → C0 Q3 (§Per-Turn Routing) · estimate never hard-stops (T-286) · eff(CHAT×1.75)≥90%·token_budget(128k)+signal-box≥2 → advisory `[compact-rec]` → check CLIENT METER (real %)
+- [L2] Bash with likely >40L output → `python3 scripts/safe_run.py` OR pipe `2>&1 | grep -iE "error|warn|fail" | tail -20` (R6) · plugin-only → `<ENG>/scripts/safe_run.py` (R5 engine-script rule)
+- BLOCKED → halt · show error+progress · ask "fix or skip?" · wait
+- editing SKILL.md/tool-def mid-session (SESSION>10k) → emit `[schema-gate]` · wait confirm · after edit → `[schema-changed]`
+→ full L1–L5 steps + PURGE table + safe_run/verify_runner + cache notes ([compact-rec] 5-field · TTL · stable-prefix · proactive-invalidation): **Implement/06_orchestrator.md §Phase 3 REACT LOOP**
+
+---
+
+### Completion Gate
+
+**Completion Gate** (all mece_plan.md sections marked [X]):
+- Close-gate (do NOT auto-close — CFP-037): first emit `[close-gate-check] trigger: (user typed /compact)=Y/N · (SESSION_TOTAL>80k)=Y/N · (LOOP_WEIGHT>50)=Y/N` (LOOP_WEIGHT from hook [token-state]; after T-235 session_tokens.md is subagent-clean too — either source is valid). All N → emit `[session-health]` + summary → WAIT for user · Any Y → proceed to close.
+  > **T-452 auto-signal:** when the LAST Phase-3 section is marked `[X]`, `plan_lint.py` auto-emits a one-time `[task-closed]` ready-to-close signal (WARNs on missing handoff/compact_state · prompts Close-Checklist + /compact). Signal-only — it never writes phase:done / self-confirms (CFP-037). Full contract → `knowledge/session_close_loop.md` (single source).
+- [scope-creep] gate (T-230 · all edit skills): files changed since task-start baseline (`.sessions/.scope_baseline` — auto-captured at Phase 1 by `scripts/posttool_track.py` when gather_complete.md is written · T-230b · gitignored · NOT raw git-diff-vs-HEAD — a dirty tree pollutes it) ⊆ union of section `File:` declarations → undeclared file = emit `[scope-creep] file:<path>` → justify or `git checkout` before [X] · all declared → `[scope-creep] clean`. Canonical: mece_plan_schema.md §Surgical Scope + §Close Checklist.
+- Verify: Verify-N ≤3 + no src/ change → inline bash verify · Verify-N ≥4 OR src/ change → spawn MODEL_LOW reviewer.
+- Post-build artifact review (T-263 · CFP-044): any review/audit of a FINISHED artifact MUST load the `scrutinize` skill first (emit `[skill-active] scrutinize`) — never review in head. A demanded review (`.review_intent` armed by `scripts/review_intent.py`) that reaches `phase: done` without a review **tied to the current plan** is HARD-BLOCKED by `scripts/skill_gate.py`. **T-366 freshness:** the proof is the current stripped-plan-hash appearing in `.skeptical_ok`/`.scrutinize_log` (`_fresh_review_proof`), so a STALE same-session skill load merely present in the today-set no longer clears it — a real review of THIS plan version must have run. Fail-open when there is no plan hash (never a new false-block). Honest scope: this proves a review engaged this plan version, NOT that a FULL close scrutinize specifically ran. Freshness applies to the **demanded (2a) path only**; the proactive build-review (2b) path keeps the today-set test to avoid a leftover-stub over-block (T-252). Escape: `HARNESS_SKIP_REVIEW_GATE=1`. Skill SELECTION happens at B2 (manifest keyword match); skill INVOCATION is ENFORCED here by the T-263 gate — the manifest tells you which skill, the gate makes loading it non-optional.
+- **Propagation Stage (T-331 · "done = propagated"):** an engine/harness change (constitution · scripts · skills · hooks) is NOT done until it reaches the git remote + other machines — the 3-point endpoint: release → remote → other-machine detect. After section work verifies, BEFORE marking the task closed:
+    1. `python3 scripts/release.py <patch|minor|major>` — ONE command: bumps `.claude-plugin/plugin.json` version + regenerates `hooks/hooks.json` from `.claude/settings.json` + verifies no hook-list drift + `git add`s the two files it changed (reuses gen_plugin_hooks + hooks_sync — single-source, no re-implement). Run this FIRST — running it AFTER the commit strands the version bump uncommitted, so the remote keeps the old version and other machines never detect the update (the trap that stranded v1.0.8 · T-334).
+    2. commit the engine changes in ONE commit that INCLUDES the release.py bump: `git commit -am 'release: vX.Y.Z (bump + hook-sync + content)'` — release.py prints this exact authoritative git sequence at the end of its run
+    3. `git push` (USER — `git push` is deny-listed for the agent)
+    4. propagate to consumers: plugin install → `/plugin update` (one command · pulls engine + constitution) · self-host machine → `git pull && bash scripts/machine_install.sh`
+    5. notify other machines an update exists (T-332 · DELIVERED): the SessionStart hook `scripts/version_check.py` checks — layered · throttled ≤1/day · offline-safe — whether a newer released version exists (Layer A: git `fetch origin main` when online+git · Layer B: newest sibling plugin-cache dir) → prints an update notice + a change summary + the exact user-typed `/plugin update` (or `git pull && bash scripts/machine_install.sh`) steps. Advisory only — never auto-applies, never pushes/pulls, never blocks boot.
+  Hard-block (LIVE): `index_reconcile.py --check` exit-2's on hook-list drift → the close-gate blocks the `phase: done` write while the two hook-lists diverge (escape: `HARNESS_SKIP_PROPAGATION_BLOCK=1`, parity with HARNESS_SKIP_INDEX_BLOCK). The Stop reconciler auto-heals most drift first (regenerates hooks.json → `[hook-synced]`). Self-propagating: this stage ships inside the plugin, so consumers get the rule on their next `/plugin update`. This is the SINGLE-SOURCE block — CLAUDE.md §Phase 3 Close + mece_plan_schema.md §Close Checklist point here.
+- Done-criteria (all): every [✓ written] · R8 Index Sync · Roadmap [X] · active_thread phase:done · SESSION_TOTAL written · Feedback sent · change propagated (§Propagation Stage — release.py + push) · mece_plan.md Phase 1-3 cleared (PATH A · exact cmd in mece_plan_schema.md §PATH A · CFP-025).
+- Before /compact: run scripts/trim_exec_log.py + write session_summary to token_log.jsonl · SESSION >60k → TOKEN PAUSE · 80-90k → strong [compact-rec] (per Implement/03_config.md §R3).
+
+Session Health: <20k ✅ · 20–40k 💡 · 40–60k ⚠️ compact now · 60-80k 🛑 TOKEN PAUSE · emit `[session-health]` · done-summary in the user's language (R11) — e.g. Thai `งานเสร็จแล้วครับ ✅`
+⚠️ CHAT_TOTAL: when `CHAT_SRC=real` (claude-code/anthropic · read by `scripts/real_context.py` from the transcript's latest `usage`) CHAT_TOTAL is the REAL window-fill — no undercount, treat as truth (= client-meter number). When `CHAT_SRC=est` (fallback · no transcript) it is a LOWER BOUND: true API context ≈ estimate × 1.5–2× (triangular re-send) · compact before it climbs near budget. (T-287) The EST path is now CATEGORY-COMPLETE — `token_estimator.full_context_estimate` adds system + history + output (not tool-I/O-only), closing the old ~4× gap; the READ path stays Claude-only (off-Claude availability matrix in detected.md). (T-288)
+
+---
+
+## Index Sync Invariant
+
+Every create/modify/delete/rename **must** update indexes before task marked done → emit `[r8-sync-check]`.
+> **Per-event trigger (T-322):** index_files sync now ALSO fires automatically at the mutation trigger — a PostToolUse hook (`scripts/mutation_sync.py`) upserts each created/edited file's index_files entry immediately (heavy cross-file graphs — backlink/symbol/code_graph/repo_map — stay close-batched in the Stop reconciler). Because sync is a consequence of the file event, a plan never needs its own "sync section" (plan-free · see CFP-049).
+> **Topic-assign DUTY (T-437):** creating or SUBSTANTIALLY editing a doc (`.md` only — never `.py`/`.json` · T-412) carries a duty, not just an index upsert. `mutation_sync.py` re-flags the doc `backfill_pending:True` (new doc, OR an edit ≥20% line-delta, OR still no topics); the AGENT then assigns topic+label **NOW** while the content is already in context (near-zero marginal cost) — **reuse-first** via `tag_gate.resolve_and_assign` (the SOLE resolver · register a NEW topic ONLY if genuinely new · NEVER hand-pick a topic id). Any doc still flagged at close is surfaced by `index_reconcile.py`: **interactive** → a `[tag-needed]` list + assign-now nudge; **headless** → escalated to `.sessions/review_queue/` (the next interactive session drains it) — **NEVER blind-mint headless, and NEVER trip loop_paused / block close** (a tagging gap is advisory, not destructive — no false deadlock · R14-headless).
+Backlink check before editing: `backlinks[]` (every file that imports the one you edit — update them all) → **Implement/03_config.md §Backlink Rule**
+→ Full trigger-event → must-update → regen-command table (8 rows: file · symbol · code-graph · session · rule-file · SKILL/tool manifest · knowledge · REPO_MAP · with idempotent flags): **Implement/03_config.md §R8**
+
+> **Safety net (T-183 · T-190):** the Stop-hook reconciler `scripts/index_reconcile.py` auto-runs the idempotent regenerators (rule_indexer · backlink_analyzer · code_graph · symbol_indexer) + `repo_map_check.py --sync` at session close, emitting `[index-drift]` for anything stale — a missed manual update is caught, not lost. Manifest + knowledge-conflict updates stay judgment-type (flagged, never auto-applied). Full detail: **Implement/03_config.md §R8**.
+
+---
+
+## Never-Full-Load (hard — no exceptions, including Phase 1 G2)
+→ Full file list + whitelist: **Implement/03_config.md §Never-Full-Load**
+Violation → emit `[violation] never-full-load` → discard → re-run as grep.
+on_demand_files in manifest = lookup table for G2 only. B3 MUST NOT load them.
+
+---
+
+## Sub-agent Rules (R4)
+
+Probe first: `find <path> -name "<pat>" | wc -l` → <5 files/<300L = main context · ≥5 = spawn sub-agent (≤500 tok summary)
+Routing (model × EFFORT): dial EFFORT first, tier second · baseline = Sonnet @ low-med · MODEL_LOW=lookup/grep/Reviewer · MODEL_LOW(delegated)=mechanical MECE section (→ `delegate` skill · confirmed-plan only · self-verify + retry-once + escalate · never gated/judgment) · MODEL_MEDIUM=mechanical@low / code-edits@med · MODEL_HIGH=MECE/architecture ONLY (reserved) · robustness floor: every skill must run on a MEDIUM model WITHOUT inference (~35% cost saving). Plan-time tier lint (T-340): `scripts/plan_lint.py` (PostToolUse hook on mece_plan.md + M3 step) flags MISSING-MODEL / model_high-without-MAIN + prints the tier-distribution table so a silently-all-opus plan is caught before Phase 3; `--dormancy` reports planned-cheap-but-never-spawned. Binding spawn is spawn_gate.py (T-328); plan_lint makes the LABELING honest. Also (T-367): a checkbox-only plan (`- [ ] S<n>` lines but 0 `### S<n>` headers) HARD-BLOCKS (exit 2) via the plan_lint PostToolUse hook when HEADLESS — else T-362 plan-auth fails-closed and the autonomous loop stalls silently; interactive stays a WARN (a human sees stderr + fixes it, never hard-blocked). Detection lives in `lint()` (stays exit 0); enforcement in `_hook_mode` (reuses `danger_gate.is_headless` — single-source).
+Max depth = 1 · pre-assign T-IDs before spawn · emit `[cycle N]` · HALT if blocked
+→ **Run-time fan-out + map-reduce (T-481):** the cycle machinery is not Phase-3-only — the Orchestrator can invoke the 4-check fan-out gate ANYWHERE work is queued (≥2 independent units · no shared WRITE · size floor · latency worth it), and a shared-file write goes through map-reduce (parallel draft → serial merge). Single source: **Implement/06_orchestrator.md §14f** (extends this rule's trigger surface · depth=1 guardrail unchanged).
+→ Full routing table (model×effort + phase overrides) + spawn patterns: **Implement/03_config.md §Sub-agent Rules** · OmO Reviewer roles: **Implement/04_skills.md §Orchestration Protocol**
+
+---
+
+## Critical Project Rules
+Domain-specific non-negotiable rules (e.g. coding's Miniflare D1 / Edge Runtime / PapaParse) are NOT in core — they live INLINE in the active domain pack `## critical_rules` (domain/<name>.md). At task start, read the active pack and treat its `## critical_rules` as hard constraints.
+<!-- END:agent-orientation -->
