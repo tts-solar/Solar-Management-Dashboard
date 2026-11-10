@@ -6,7 +6,7 @@ import './styles.css'
 import { Chart, registerables } from 'chart.js'
 import { TreemapController, TreemapElement } from 'chartjs-chart-treemap'
 
-import { monthsOf, yearsOf } from './data/aggregate'
+import { hasDailyDetail, monthsOf, yearsOf } from './data/aggregate'
 import { autoBoundary, filterDaily, hasHourly, type DayBoundary, type TimeOfDay } from './data/dayNight'
 import { clearSettings, GLOBAL_KEY, loadSettings, missingSettings, REQUIRED_FIELD_SCOPE, saveSettings, settingsFor, type PlantSettings, type SettingsMap } from './data/settings'
 import type { Plant } from './data/types'
@@ -283,6 +283,21 @@ function rangeFilter(
   }
 }
 
+// Offer the date-range ("ช่วงวัน") filter only when the data actually has day-level resolution —
+// monthly reports fold each month into one row, so a per-day filter would just confuse (and its day
+// pickers would match nothing mid-month). If a range route is already active (old bookmark, or a mixed
+// set that lost its daily plant), still offer it so the user can toggle back to ปี/เดือน.
+function maybeRangeFilter(
+  list: Plant[],
+  range: { start: string; end: string } | undefined,
+  toRoute: (patch: { start?: string; end?: string }) => Route,
+): RangeFilter | undefined {
+  const { min, max } = dataRange(list)
+  if (!min || !max) return undefined
+  if (!range && !hasDailyDetail(list.flatMap((p) => p.daily))) return undefined
+  return rangeFilter(range, min, max, toRoute)
+}
+
 // The daytime window in force: the user-set one, else inferred from these plants' production.
 const effectiveBoundary = (list: Plant[]): DayBoundary => todBoundary ?? autoBoundary(list.flatMap((p) => p.daily))
 
@@ -370,7 +385,6 @@ function render(route: Route): void {
       ? `${titleName}, ${MONTHS[+month - 1]} ${route.year}`
       : `${titleName}, Y${route.year}`
   shell.setHeader(header, crumbs)
-  const dr = dataRange([plant])
   shell.setPickers(
     [
       {
@@ -389,7 +403,7 @@ function render(route: Route): void {
         onChange: (m) => go({ view: 'plant', plant: plant.id, year: route.year, month: m || undefined }),
       },
     ],
-    dr.min && dr.max ? rangeFilter(range, dr.min, dr.max, (r) => ({ view: 'plant', plant: plant.id, year: route.year, ...r })) : undefined,
+    maybeRangeFilter([plant], range, (r) => ({ view: 'plant', plant: plant.id, year: route.year, ...r })),
     todFilter([plant]),
   )
   setFooter(plant)
@@ -407,7 +421,6 @@ function renderOverview(route: Extract<Route, { view: 'overview' }>): void {
     shell.setPickers([]) // no data yet → no filter beside the welcome screen
     return renderWelcome(shell.view, shell.openImport)
   }
-  const dr = dataRange()
   shell.setPickers(
     range
       ? []
@@ -419,7 +432,7 @@ function renderOverview(route: Extract<Route, { view: 'overview' }>): void {
             onChange: (y) => go({ view: 'overview', year: y }),
           },
         ],
-    dr.min && dr.max ? rangeFilter(range, dr.min, dr.max, (r) => ({ view: 'overview', ...r })) : undefined,
+    maybeRangeFilter(plants, range, (r) => ({ view: 'overview', ...r })),
     todFilter(plants),
   )
   overviewView(shell.view, { ...viewCtx, plants: lens(plants) }, year ?? '', range)

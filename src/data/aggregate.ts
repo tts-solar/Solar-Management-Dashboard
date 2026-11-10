@@ -79,3 +79,9 @@ export const yearsOf = (daily: DailyRow[]): string[] => [...new Set(daily.map((d
 
 export const monthsOf = (daily: DailyRow[], year?: string): string[] =>
   [...new Set(daily.map((d) => monthOf(d.date)))].filter((m) => !year || m.startsWith(year))
+
+// Does this data have sub-month (day-level) resolution? Monthly reports fold a whole month into one
+// row dated the 1st, so a date-range / day filter over them is meaningless (and the day pickers would
+// let the user pick mid-month days that match nothing). Interval/daily imports land on real calendar
+// days, so at least one row is not a month-start. We gate the "ช่วงวัน" date-range filter on this.
+export const hasDailyDetail = (daily: DailyRow[]): boolean => daily.some((d) => !d.date.endsWith('-01'))

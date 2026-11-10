@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { inRange, RANGE_DAILY_MAX, rangeDays, rangeIsDaily, sumRows, toMonthly } from './aggregate'
+import { hasDailyDetail, inRange, RANGE_DAILY_MAX, rangeDays, rangeIsDaily, sumRows, toMonthly } from './aggregate'
 import type { DailyRow } from './types'
 
 const day = (date: string, produced = 10): DailyRow => ({
@@ -69,5 +69,21 @@ describe('range grouping feeds the existing aggregators', () => {
     const months = toMonthly(slice)
     expect(months.map((m) => m.key)).toEqual(['2026-01', '2026-02', '2026-03'])
     expect(months[1].days).toBe(28) // all of Feb
+  })
+})
+
+describe('hasDailyDetail', () => {
+  it('is true for interval/daily data (real calendar days)', () => {
+    expect(hasDailyDetail(daily)).toBe(true) // Jan–Mar, one row per day
+    expect(hasDailyDetail([day('2026-01-01'), day('2026-01-02')])).toBe(true)
+  })
+
+  it('is false for monthly reports (every row dated the 1st)', () => {
+    const monthly = [day('2026-01-01'), day('2026-02-01'), day('2026-03-01')]
+    expect(hasDailyDetail(monthly)).toBe(false)
+  })
+
+  it('is false when there is no data', () => {
+    expect(hasDailyDetail([])).toBe(false)
   })
 })
