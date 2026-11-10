@@ -5,6 +5,8 @@ dist/
 # real customer data & design source stay local (repo is public)
 data/*
 !data/sample*.csv
+# local real-data folder (Thai name, not covered by data/*) — never publish
+ข้อมูล/
 design/
 *.xls
 *.xlsx
@@ -21,8 +23,8 @@ Thumbs.db
 # AI harness / tooling files stay local (not part of the app)
 .agents/
 .claude/
-AGENTS.md
-CLAUDE.md
+AGENTS.md*
+CLAUDE.md*
 CODING_FAILURE_PATTERNS.md
 INVARIANTS.md
 error_index.md
