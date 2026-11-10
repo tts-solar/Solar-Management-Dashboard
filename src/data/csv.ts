@@ -78,6 +78,16 @@ export function plantIdFromFile(name: string): string {
   return base.split('_')[0].trim() || 'Plant'
 }
 
+/** Split CSV text into a grid of unquoted string cells (blank lines dropped). Used to detect and
+ *  route a monthly-report CSV through the same parser the .xlsx path uses. */
+export function csvToGrid(text: string): string[][] {
+  return text
+    .replace(/^﻿/, '')
+    .split(/\r?\n/)
+    .filter((l) => l.trim() !== '')
+    .map((l) => splitLine(l).map(unquote))
+}
+
 /** Fold a 15-min (or any interval) export into daily kWh totals. */
 export function parseCsv(text: string): ParseResult {
   const lines = text.replace(/^﻿/, '').split(/\r?\n/)

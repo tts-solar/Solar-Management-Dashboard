@@ -1,5 +1,7 @@
 /** Offline build, no data yet: how to import, what the CSV must look like, and where the data stays. */
 
+import { downloadDailyTemplate, downloadMonthlyTemplate } from '../app/templates'
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag)
   if (cls) e.className = cls
@@ -30,6 +32,17 @@ export function renderWelcome(view: HTMLElement, onPick: () => void): void {
   pick.addEventListener('click', onPick)
   box.append(pick)
 
+  const tpl = el('div', 'welcome-tpl')
+  tpl.append(el('span', '', 'ไม่มีไฟล์ส่งออกจากพอร์ทัล? ดาวน์โหลดเทมเพลตไปกรอกเอง (เปลี่ยนชื่อไฟล์เป็นชื่อ Plant ก่อนนำเข้า): '))
+  const tplMonth = el('button', 'c-btn ghost', 'เทมเพลตรายเดือน (CSV)')
+  tplMonth.type = 'button'
+  tplMonth.addEventListener('click', () => downloadMonthlyTemplate())
+  const tplDay = el('button', 'c-btn ghost', 'ตัวอย่างรายวัน (CSV)')
+  tplDay.type = 'button'
+  tplDay.addEventListener('click', () => downloadDailyTemplate())
+  tpl.append(tplMonth, tplDay)
+  box.append(tpl)
+
   const fmt = el('div', 'welcome-box')
   fmt.append(
     el('h3', '', 'รูปแบบไฟล์ CSV'),
@@ -45,9 +58,9 @@ export function renderWelcome(view: HTMLElement, onPick: () => void): void {
 
   const xlsx = el('div', 'welcome-box')
   xlsx.append(
-    el('h3', '', 'รูปแบบไฟล์ Excel (.xlsx) — รายงานรายเดือน'),
+    el('h3', '', 'รูปแบบไฟล์รายงานรายเดือน (Excel .xlsx หรือ CSV)'),
     list('ul', [
-      'รายงาน "Plant Report" จากพอร์ทัล (หนึ่งแถวต่อหนึ่งเดือน) · ชื่อ Plant มาจากชื่อไฟล์ เช่น "Plant Report - SC Tower 2024.xlsx" → Plant SC Tower',
+      'รายงาน "Plant Report" จากพอร์ทัล (หนึ่งแถวต่อหนึ่งเดือน) รับได้ทั้ง .xlsx และ .csv · ชื่อ Plant มาจากชื่อไฟล์ เช่น "Plant Report - SC Tower 2024.xlsx" → Plant SC Tower',
       'คอลัมน์ที่ใช้: Statistical Period (YYYY-MM), PV Yield → ผลิต, Consumption → ใช้ไฟ, Export → ขายไฟ, Import → ซื้อไฟ, Peak Power → กำลังสูงสุด',
       'ข้อมูลเป็นระดับ "รายเดือน" — กราฟรายเดือน/รายปีจะแม่นยำ ส่วนมุมมองรายวันจะเห็นหนึ่งจุดต่อเดือน (ตามความละเอียดของรายงาน)',
       'นำเข้าหลายปีพร้อมกันได้ ระบบรวมเป็น Plant เดียวกันให้อัตโนมัติ',

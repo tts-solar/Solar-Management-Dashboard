@@ -775,6 +775,15 @@ dialog.settings .row.pulse {
   transform: translateY(0);
   box-shadow: 0 3px 10px rgba(23, 89, 74, 0.26);
 }
+.welcome-tpl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 20px;
+  color: var(--gray);
+  font-size: 0.85rem;
+}
 .welcome-box {
   padding: 12px 16px;
   border: 1px solid var(--line);
@@ -1802,6 +1811,21 @@ dialog.import-dlg::backdrop {
 }
 .imp-pick {
   align-self: flex-start;
+}
+.imp-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.imp-tools-hint {
+  flex: 1 1 100%;
+  color: var(--gray);
+  font-size: 0.82rem;
+}
+.imp-tpl {
+  font-size: 0.82rem;
+  padding: 5px 12px;
 }
 .imp-preview {
   display: flex;

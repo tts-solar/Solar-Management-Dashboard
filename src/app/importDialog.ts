@@ -1,6 +1,7 @@
 import type { Imported, ImportResult } from './upload'
 import type { MergeInfo } from './store'
 import type { Plant } from '../data/types'
+import { downloadDailyTemplate, downloadMonthlyTemplate } from './templates'
 
 /**
  * Centered import flow: a modal that lets the user pick CSV files, SHOWS what will be imported
@@ -45,7 +46,7 @@ export function openImportDialog(o: ImportDialogOpts): void {
   const head = el('div', 'imp-head')
   head.append(
     el('h2', '', 'นำเข้าข้อมูล'),
-    el('p', 'imp-sub', 'เลือกไฟล์ CSV (ราย 15 นาที) หรือ Excel (.xlsx รายงานรายเดือน) ของ Plant — ระบบจะแสดงข้อมูลที่อ่านได้ก่อน แล้วค่อยกดยืนยัน (เลือกหลายไฟล์พร้อมกันได้)'),
+    el('p', 'imp-sub', 'เลือกไฟล์ CSV (ราย 15 นาที) หรือรายงานรายเดือน (Excel .xlsx หรือ CSV) ของ Plant — ระบบจะแสดงข้อมูลที่อ่านได้ก่อน แล้วค่อยกดยืนยัน (เลือกหลายไฟล์พร้อมกันได้)'),
   )
 
   const pick = el('button', 'c-btn primary imp-pick', 'เลือกไฟล์ CSV / Excel')
@@ -68,7 +69,17 @@ export function openImportDialog(o: ImportDialogOpts): void {
   ok.disabled = true
   actions.append(cancel, ok)
 
-  dlg.append(head, pick, input, preview, actions)
+  const tools = el('div', 'imp-tools')
+  tools.append(el('span', 'imp-tools-hint', 'ยังไม่มีไฟล์? ดาวน์โหลดเทมเพลตไปกรอกเอง (เปลี่ยนชื่อไฟล์เป็นชื่อ Plant ของคุณก่อนนำเข้า):'))
+  const tplMonth = el('button', 'c-btn ghost imp-tpl', 'เทมเพลตรายเดือน (CSV)')
+  tplMonth.type = 'button'
+  tplMonth.addEventListener('click', () => downloadMonthlyTemplate())
+  const tplDay = el('button', 'c-btn ghost imp-tpl', 'ตัวอย่างรายวัน (CSV)')
+  tplDay.type = 'button'
+  tplDay.addEventListener('click', () => downloadDailyTemplate())
+  tools.append(tplMonth, tplDay)
+
+  dlg.append(head, pick, input, tools, preview, actions)
   document.body.append(dlg)
 
   let confirmed: Imported[] = []

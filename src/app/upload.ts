@@ -1,5 +1,5 @@
-import { CsvError, parseCsv, plantIdFromFile } from '../data/csv'
-import { parsePlantReport } from '../data/report'
+import { CsvError, csvToGrid, parseCsv, plantIdFromFile } from '../data/csv'
+import { isMonthlyReportGrid, parsePlantReport } from '../data/report'
 import type { Plant } from '../data/types'
 import { readXlsxGrid } from '../data/xlsx'
 
@@ -31,24 +31,31 @@ function decode(buf: ArrayBuffer): string[] {
 
 const isXlsx = (file: File): boolean => /\.xlsx$/i.test(file.name)
 
-/** Parse a monthly "Plant Report" .xlsx into a plant (one DailyRow per month). */
-async function readReport(file: File): Promise<Imported> {
-  const grid = await readXlsxGrid(await file.arrayBuffer())
-  const r = parsePlantReport(grid, file.name)
+/** A parsed monthly Plant Report grid → a plant (one DailyRow per month), from .xlsx or CSV. */
+function monthlyFromGrid(grid: string[][], fileName: string): Imported {
+  const r = parsePlantReport(grid, fileName)
   return {
-    plant: { id: r.id, name: r.name, daily: r.daily, source: file.name },
+    plant: { id: r.id, name: r.name, daily: r.daily, source: fileName },
     days: r.months,
     skipped: r.skipped,
     granularity: 'month',
   }
 }
 
-/** Parse one interval CSV into a plant (days folded from the raw intervals). */
+/** Parse a monthly "Plant Report" .xlsx into a plant (one DailyRow per month). */
+async function readReport(file: File): Promise<Imported> {
+  return monthlyFromGrid(await readXlsxGrid(await file.arrayBuffer()), file.name)
+}
+
+/** Parse one CSV into a plant: a monthly report (one row per month) or an interval export (days
+ *  folded from raw intervals), detected from the file's own shape. */
 function readCsvFile(file: File, buf: ArrayBuffer): Imported {
   const texts = decode(buf)
   let lastError: unknown
   for (const text of texts) {
     try {
+      const grid = csvToGrid(text)
+      if (isMonthlyReportGrid(grid)) return monthlyFromGrid(grid, file.name)
       const parsed = parseCsv(text)
       const id = plantIdFromFile(file.name)
       return {

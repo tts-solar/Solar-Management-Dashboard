@@ -56,6 +56,23 @@ export function plantNameFromReport(fileName: string): string {
 }
 
 /**
+ * True when a grid looks like a monthly Plant Report: a header row that names the period and a
+ * PV-yield column, followed by at least one YYYY-MM data row. Lets the CSV importer tell a monthly
+ * report apart from an interval export (whose date cells carry a full datetime, never a bare YYYY-MM)
+ * and route it to {@link parsePlantReport}.
+ */
+export function isMonthlyReportGrid(grid: string[][]): boolean {
+  for (let i = 0; i < grid.length; i++) {
+    const row = grid[i]
+    if (!row.some(isPeriodHeader) || !row.some((c) => FIELD_MATCHERS[0][1](c))) continue
+    const periodCol = row.findIndex(isPeriodHeader)
+    for (let j = i + 1; j < grid.length; j++) if (PERIOD_RE.test(grid[j][periodCol] ?? '')) return true
+    return false
+  }
+  return false
+}
+
+/**
  * Parse a grid (from {@link readXlsxGrid}) as a monthly Plant Report. Throws {@link CsvError} with a
  * Thai message when it is not a recognizable report (missing header row or no PV-yield column).
  */
