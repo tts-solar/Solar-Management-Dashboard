@@ -43,6 +43,21 @@ function num(cell: string | undefined): number {
   return Number.isFinite(v) ? v : 0
 }
 
+/** Energy fields only (not Peak Power, which is kW); these get a unit factor, peak keeps its raw value. */
+const ENERGY_FIELDS: Field[] = ['produced', 'consumed', 'exported', 'imported']
+
+/**
+ * kWh-per-unit factor read from an energy column's header, so the dashboard stores kWh regardless of
+ * how the report labels it. Monthly reports DEFAULT to kWh (the portal's native unit for Plant
+ * Reports) when the header names no unit — unlike interval CSVs, which default to Wh. `\bwh\b` matches
+ * a standalone "Wh" but not the "Wh" inside "kWh"/"MWh", so only an explicit MWh or Wh marker overrides.
+ */
+function energyFactor(header: string): number {
+  if (/\bmwh\b/i.test(header)) return 1000 // MWh → kWh
+  if (/\bwh\b/i.test(header)) return 0.001 // plain Wh → kWh
+  return 1 // kWh, or unlabelled: the monthly report's native unit
+}
+
 /** A plant name from the report file name: "Plant Report - SC Tower 2024.xlsx" → "SC Tower". */
 export function plantNameFromReport(fileName: string): string {
   const name = fileName
@@ -93,8 +108,13 @@ export function parsePlantReport(grid: string[][], fileName: string): ParsedRepo
   const header = grid[headerRow]
   const periodCol = header.findIndex(isPeriodHeader)
   const col = new Map<Field, number>()
+  const factor = new Map<Field, number>() // kWh-per-unit for each energy column, from its header
   header.forEach((h, i) => {
-    for (const [field, test] of FIELD_MATCHERS) if (!col.has(field) && test(h)) col.set(field, i)
+    for (const [field, test] of FIELD_MATCHERS)
+      if (!col.has(field) && test(h)) {
+        col.set(field, i)
+        if (ENERGY_FIELDS.includes(field)) factor.set(field, energyFactor(h))
+      }
   })
   if (!col.has('produced')) {
     throw new CsvError('ไม่พบคอลัมน์ PV Yield (พลังงานที่ผลิต) ในรายงาน')
@@ -116,7 +136,7 @@ export function parsePlantReport(grid: string[][], fileName: string): ParsedRepo
       skipped++
       continue
     }
-    const get = (f: Field): number => (col.has(f) ? num(row[col.get(f)!]) : 0)
+    const get = (f: Field): number => (col.has(f) ? num(row[col.get(f)!]) * (factor.get(f) ?? 1) : 0)
     daily.push({
       date: `${year}-${String(month).padStart(2, '0')}-01`,
       produced: get('produced'),

@@ -3,7 +3,7 @@ import { ageYears, cumulative, resolve, withMetrics, type MetricRow, type Resolv
 import { globalSettings, settingsFor, type SettingsMap } from '../data/settings'
 import type { Plant } from '../data/types'
 import type { Route } from '../app/router'
-import { C, MONTHS, axisTitle, chartLegend, energy, energyScale, kpiCard, mountChart, pct } from '../charts/common'
+import { C, MONTHS, axisTitle, chartLegend, energy, energyIn, energyScale, kpiCard, mountChart, pct } from '../charts/common'
 import { bubbleChart, bubbleLegend } from '../charts/bubble'
 import { treemapChart } from '../charts/treemap'
 
@@ -146,7 +146,7 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string, rang
       },
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${energy(Number(c.raw) * scale.div)} (สะสม)` } },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${energyIn(Number(c.raw) * scale.div, scale)} (สะสม)` } },
       },
     },
   })

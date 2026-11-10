@@ -3,7 +3,7 @@ import { inPeriod, inRange, rangeIsDaily, sumRows, toMonthly } from '../data/agg
 import { bep, formatYM, resolve, withMetrics, type BepYear, type MetricRow } from '../data/metrics'
 import { settingsFor } from '../data/settings'
 import type { Plant } from '../data/types'
-import { C, MONTHS, axisTitle, chartLegend, energy, energyScale, kpiCard, mountChart, pct } from '../charts/common'
+import { C, MONTHS, axisTitle, chartLegend, energy, energyIn, energyScale, kpiCard, mountChart, pct } from '../charts/common'
 import { bepChart, bepLegend } from '../charts/bep'
 import { scatterChart } from '../charts/scatter'
 import { dataTable } from './table'
@@ -115,7 +115,7 @@ export function renderPlant(
         tooltip: {
           callbacks: {
             title: (items) => rows[items[0]?.dataIndex]?.label ?? '',
-            label: (c) => `${c.dataset.label}: ${energy(Number(c.raw) * scale.div)}`,
+            label: (c) => `${c.dataset.label}: ${energyIn(Number(c.raw) * scale.div, scale)}`,
             footer: () => (drill ? 'คลิกเพื่อดูรายวัน' : ''),
           },
         },

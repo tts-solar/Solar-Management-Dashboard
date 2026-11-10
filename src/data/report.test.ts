@@ -97,6 +97,34 @@ describe('parsePlantReport (monthly Excel Plant Report)', () => {
   })
 })
 
+describe('parsePlantReport energy-unit detection', () => {
+  it('converts MWh energy columns to kWh, leaving Peak Power (kW) untouched', () => {
+    const g = [
+      ['Statistical Period', 'PV Yield (MWh)', 'Consumption (MWh)', 'Peak Power (kW)'],
+      ['2026-01', '12.5', '3.2', '80'],
+    ]
+    const d = parsePlantReport(g, 'x.xlsx').daily[0]
+    expect(d.produced).toBe(12500) // 12.5 MWh → 12,500 kWh
+    expect(d.consumed).toBe(3200)
+    expect(d.peakKw).toBe(80) // kW is not an energy unit — passed through as-is
+  })
+
+  it('converts plain Wh energy columns to kWh', () => {
+    const g = [['Statistical Period', 'PV Yield (Wh)'], ['2026-01', '1250000']]
+    expect(parsePlantReport(g, 'x.xlsx').daily[0].produced).toBeCloseTo(1250, 6) // 1,250,000 Wh → 1,250 kWh
+  })
+
+  it('defaults an unlabelled energy column to kWh (NOT Wh like interval CSVs)', () => {
+    const g = [['Statistical Period', 'PV Yield'], ['2026-01', '1250']]
+    expect(parsePlantReport(g, 'x.xlsx').daily[0].produced).toBe(1250) // ×1, so monthly reports read as-is
+  })
+
+  it('reads kWh columns unchanged (the portal Plant Report default)', () => {
+    const g = [['Statistical Period', 'PV Yield (kWh)'], ['2026-01', '1250']]
+    expect(parsePlantReport(g, 'x.xlsx').daily[0].produced).toBe(1250) // "kWh" must not be read as "Wh"
+  })
+})
+
 describe('xlsx grid extraction (XML level)', () => {
   it('column letters → zero-based index', () => {
     expect(_internal.colIndex('A1')).toBe(0)
