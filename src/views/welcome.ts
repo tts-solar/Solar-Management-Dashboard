@@ -19,13 +19,13 @@ export function renderWelcome(view: HTMLElement, onPick: () => void): void {
 
   box.append(
     list('ol', [
-      'นำเข้าไฟล์ CSV ของแต่ละ Plant ด้วยปุ่ม "เลือกไฟล์ CSV" ด้านล่าง หรือลากไฟล์มาวางบนหน้านี้ (เลือกหลายไฟล์พร้อมกันได้) · ครั้งต่อไปนำเข้าเพิ่มได้ที่เมนู "Settings" ด้านซ้าย',
+      'นำเข้าไฟล์ของแต่ละ Plant ด้วยปุ่ม "เลือกไฟล์ CSV / Excel" ด้านล่าง หรือลากไฟล์มาวางบนหน้านี้ (เลือกหลายไฟล์พร้อมกันได้) · รองรับ CSV ราย 15 นาที และ Excel (.xlsx) รายงานรายเดือน · ครั้งต่อไปนำเข้าเพิ่มได้ที่เมนู "Settings" ด้านซ้าย',
       'ดูหน้าภาพรวม แล้วคลิกเข้าไปดูราย Plant รายปี และรายเดือน · ปรับค่าของแต่ละ Plant ได้ที่เมนู "Settings" ด้านซ้าย',
       'แอปจำข้อมูลที่นำเข้าไว้ในเบราว์เซอร์เครื่องนี้ให้อัตโนมัติ เปิดไฟล์เดิมครั้งหน้าก็เห็นข้อมูลเดิมทันที ไม่ต้องนำเข้าใหม่ · อยากได้สำเนาพกพาไปเครื่องอื่น หรืออยากลบข้อมูลที่จำไว้ ไปที่เมนู "Settings" ด้านซ้าย',
     ]),
   )
 
-  const pick = el('button', 'welcome-pick', 'เลือกไฟล์ CSV')
+  const pick = el('button', 'welcome-pick', 'เลือกไฟล์ CSV / Excel')
   pick.type = 'button'
   pick.addEventListener('click', onPick)
   box.append(pick)
@@ -42,6 +42,18 @@ export function renderWelcome(view: HTMLElement, onPick: () => void): void {
     ]),
   )
   box.append(fmt)
+
+  const xlsx = el('div', 'welcome-box')
+  xlsx.append(
+    el('h3', '', 'รูปแบบไฟล์ Excel (.xlsx) — รายงานรายเดือน'),
+    list('ul', [
+      'รายงาน "Plant Report" จากพอร์ทัล (หนึ่งแถวต่อหนึ่งเดือน) · ชื่อ Plant มาจากชื่อไฟล์ เช่น "Plant Report - SC Tower 2024.xlsx" → Plant SC Tower',
+      'คอลัมน์ที่ใช้: Statistical Period (YYYY-MM), PV Yield → ผลิต, Consumption → ใช้ไฟ, Export → ขายไฟ, Import → ซื้อไฟ, Peak Power → กำลังสูงสุด',
+      'ข้อมูลเป็นระดับ "รายเดือน" — กราฟรายเดือน/รายปีจะแม่นยำ ส่วนมุมมองรายวันจะเห็นหนึ่งจุดต่อเดือน (ตามความละเอียดของรายงาน)',
+      'นำเข้าหลายปีพร้อมกันได้ ระบบรวมเป็น Plant เดียวกันให้อัตโนมัติ',
+    ]),
+  )
+  box.append(xlsx)
 
   box.append(
     el(

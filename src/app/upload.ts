@@ -1,12 +1,16 @@
 import { CsvError, parseCsv, plantIdFromFile } from '../data/csv'
+import { parsePlantReport } from '../data/report'
 import type { Plant } from '../data/types'
+import { readXlsxGrid } from '../data/xlsx'
 
-/** CSV files → plants, entirely in the browser (nothing is uploaded anywhere). */
+/** CSV + Excel files → plants, entirely in the browser (nothing is uploaded anywhere). */
 
 export interface Imported {
   plant: Plant
   days: number
   skipped: number
+  /** 'month' for monthly Plant Reports (each row is a month), 'day' for interval CSV. Drives wording. */
+  granularity: 'day' | 'month'
 }
 
 export interface ImportResult {
@@ -25,29 +29,46 @@ function decode(buf: ArrayBuffer): string[] {
   }
 }
 
+const isXlsx = (file: File): boolean => /\.xlsx$/i.test(file.name)
+
+/** Parse a monthly "Plant Report" .xlsx into a plant (one DailyRow per month). */
+async function readReport(file: File): Promise<Imported> {
+  const grid = await readXlsxGrid(await file.arrayBuffer())
+  const r = parsePlantReport(grid, file.name)
+  return {
+    plant: { id: r.id, name: r.name, daily: r.daily, source: file.name },
+    days: r.months,
+    skipped: r.skipped,
+    granularity: 'month',
+  }
+}
+
+/** Parse one interval CSV into a plant (days folded from the raw intervals). */
+function readCsvFile(file: File, buf: ArrayBuffer): Imported {
+  const texts = decode(buf)
+  let lastError: unknown
+  for (const text of texts) {
+    try {
+      const parsed = parseCsv(text)
+      const id = plantIdFromFile(file.name)
+      return {
+        plant: { id, name: id, daily: parsed.daily, source: file.name, profile: parsed.profile },
+        days: parsed.daily.length,
+        skipped: parsed.skipped,
+        granularity: 'day',
+      }
+    } catch (e) {
+      lastError = e
+    }
+  }
+  throw lastError
+}
+
 export async function readPlantFiles(files: File[]): Promise<ImportResult> {
   const result: ImportResult = { ok: [], errors: [] }
   for (const file of files) {
     try {
-      const texts = decode(await file.arrayBuffer())
-      let lastError: unknown
-      let done = false
-      for (const text of texts) {
-        try {
-          const parsed = parseCsv(text)
-          const id = plantIdFromFile(file.name)
-          result.ok.push({
-            plant: { id, name: id, daily: parsed.daily, source: file.name, profile: parsed.profile },
-            days: parsed.daily.length,
-            skipped: parsed.skipped,
-          })
-          done = true
-          break
-        } catch (e) {
-          lastError = e
-        }
-      }
-      if (!done) throw lastError
+      result.ok.push(isXlsx(file) ? await readReport(file) : readCsvFile(file, await file.arrayBuffer()))
     } catch (e) {
       const why = e instanceof CsvError ? e.message : 'อ่านไฟล์ไม่ได้'
       result.errors.push(`${file.name}: ${why}`)

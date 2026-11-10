@@ -159,8 +159,8 @@ function actionItem(icon: keyof typeof ICONS, label: string, onClick: () => void
   return b
 }
 
-const csvOnly = (list: FileList | null | undefined): File[] =>
-  [...(list ?? [])].filter((f) => /\.csv$/i.test(f.name) || f.type === 'text/csv')
+const supportedFiles = (list: FileList | null | undefined): File[] =>
+  [...(list ?? [])].filter((f) => /\.(csv|xlsx)$/i.test(f.name) || f.type === 'text/csv')
 
 export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   root.replaceChildren()
@@ -294,7 +294,7 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
 
   // drag a CSV anywhere on the page → open the import dialog pre-filled with the dropped files
   {
-    const drop = el('div', 'drop-overlay', 'วางไฟล์ CSV ที่นี่')
+    const drop = el('div', 'drop-overlay', 'วางไฟล์ CSV หรือ Excel (.xlsx) ที่นี่')
     root.append(drop)
     let depth = 0
     const hasFiles = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes('Files')
@@ -316,9 +316,9 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
       e.preventDefault()
       depth = 0
       drop.classList.remove('on')
-      const files = csvOnly(e.dataTransfer?.files)
+      const files = supportedFiles(e.dataTransfer?.files)
       if (files.length) h.onImport(files)
-      else toast('รองรับเฉพาะไฟล์ .csv', 'error')
+      else toast('รองรับเฉพาะไฟล์ .csv และ Excel (.xlsx)', 'error')
     })
   }
 

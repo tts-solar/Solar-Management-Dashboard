@@ -26,16 +26,16 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e
 }
 
-const csvOnly = (list: FileList | null | undefined): File[] =>
-  [...(list ?? [])].filter((f) => /\.csv$/i.test(f.name) || f.type === 'text/csv')
+const supportedFiles = (list: FileList | null | undefined): File[] =>
+  [...(list ?? [])].filter((f) => /\.(csv|xlsx)$/i.test(f.name) || f.type === 'text/csv')
 
 /** One-line summary of how a file's data lands on the dashboard, from its {@link MergeInfo}. */
-function impact(info: MergeInfo): string {
+function impact(info: MergeInfo, unit: string): string {
   if (info.action === 'merged') {
-    return `รวมกับข้อมูลเดิม — เพิ่ม ${info.added} วันใหม่ (เดิม ${info.kept} วัน → รวม ${info.total} วัน)`
+    return `รวมกับข้อมูลเดิม — เพิ่ม ${info.added} ${unit}ใหม่ (เดิม ${info.kept} ${unit} → รวม ${info.total} ${unit})`
   }
-  if (info.action === 'replaced') return `แทนที่ข้อมูลตัวอย่าง — ${info.total} วัน`
-  return `Plant ใหม่ — ${info.total} วัน`
+  if (info.action === 'replaced') return `แทนที่ข้อมูลตัวอย่าง — ${info.total} ${unit}`
+  return `Plant ใหม่ — ${info.total} ${unit}`
 }
 
 export function openImportDialog(o: ImportDialogOpts): void {
@@ -45,14 +45,14 @@ export function openImportDialog(o: ImportDialogOpts): void {
   const head = el('div', 'imp-head')
   head.append(
     el('h2', '', 'นำเข้าข้อมูล'),
-    el('p', 'imp-sub', 'เลือกไฟล์ CSV ของ Plant — ระบบจะแสดงข้อมูลที่อ่านได้ก่อน แล้วค่อยกดยืนยัน (เลือกหลายไฟล์พร้อมกันได้)'),
+    el('p', 'imp-sub', 'เลือกไฟล์ CSV (ราย 15 นาที) หรือ Excel (.xlsx รายงานรายเดือน) ของ Plant — ระบบจะแสดงข้อมูลที่อ่านได้ก่อน แล้วค่อยกดยืนยัน (เลือกหลายไฟล์พร้อมกันได้)'),
   )
 
-  const pick = el('button', 'c-btn primary imp-pick', 'เลือกไฟล์ CSV')
+  const pick = el('button', 'c-btn primary imp-pick', 'เลือกไฟล์ CSV / Excel')
   pick.type = 'button'
   const input = el('input')
   input.type = 'file'
-  input.accept = '.csv,text/csv'
+  input.accept = '.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   input.multiple = true
   input.hidden = true
 
@@ -87,13 +87,14 @@ export function openImportDialog(o: ImportDialogOpts): void {
     preview.replaceChildren()
 
     for (const im of imported) {
+      const unit = im.granularity === 'month' ? 'เดือน' : 'วัน'
       const info = o.previewMerge(im.plant)
       const row = el('div', 'imp-row')
       row.append(el('span', 'imp-plant', `Plant ${im.plant.id}`))
       const meta = el('div', 'imp-meta')
       meta.append(
-        el('span', '', `${info.from || '—'} ถึง ${info.to || '—'} · ${im.days} วันในไฟล์`),
-        el('span', 'imp-change', impact(info)),
+        el('span', '', `${info.from || '—'} ถึง ${info.to || '—'} · ${im.days} ${unit}ในไฟล์`),
+        el('span', 'imp-change', impact(info, unit)),
       )
       if (im.skipped) meta.append(el('span', 'imp-skip', `ข้ามแถวที่อ่านไม่ได้ ${im.skipped} แถว`))
       row.append(meta)
@@ -101,14 +102,14 @@ export function openImportDialog(o: ImportDialogOpts): void {
     }
     for (const e of errors) preview.append(el('div', 'imp-row error', e))
 
-    if (!imported.length && !errors.length) preview.append(el('p', 'imp-status', 'ไม่พบไฟล์ CSV'))
+    if (!imported.length && !errors.length) preview.append(el('p', 'imp-status', 'ไม่พบไฟล์ CSV หรือ Excel (.xlsx)'))
     ok.disabled = confirmed.length === 0
     if (confirmed.length) ok.focus()
   }
 
   pick.addEventListener('click', () => input.click())
   input.addEventListener('change', () => {
-    const files = csvOnly(input.files)
+    const files = supportedFiles(input.files)
     input.value = '' // allow re-picking the same file
     if (files.length) void process(files)
   })

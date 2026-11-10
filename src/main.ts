@@ -179,15 +179,16 @@ function openImport(files?: File[]): void {
 
 // apply a confirmed import: merge each plant in, remember, and open the newly imported data
 function commitImport(ok: Imported[]): void {
-  for (const { plant, skipped } of ok) {
+  for (const { plant, skipped, granularity } of ok) {
+    const unit = granularity === 'month' ? 'เดือน' : 'วัน'
     const info = applyMerge(plants, plant)
     const skip = skipped ? ` · ข้ามแถวที่อ่านไม่ได้ ${skipped} แถว` : ''
     const how =
       info.action === 'merged'
-        ? `รวมข้อมูล Plant ${plant.id}: เพิ่ม ${info.added} วันใหม่ (เดิม ${info.kept} วัน → รวม ${info.total} วัน)`
+        ? `รวมข้อมูล Plant ${plant.id}: เพิ่ม ${info.added} ${unit}ใหม่ (เดิม ${info.kept} ${unit} → รวม ${info.total} ${unit})`
         : info.action === 'replaced'
-          ? `แทนที่ Plant ${plant.id} แล้ว: ${info.total} วัน`
-          : `เพิ่ม Plant ${plant.id} แล้ว: ${info.total} วัน`
+          ? `แทนที่ Plant ${plant.id} แล้ว: ${info.total} ${unit}`
+          : `เพิ่ม Plant ${plant.id} แล้ว: ${info.total} ${unit}`
     shell.toast(`${how} (${info.from} ถึง ${info.to})${skip}`)
   }
   rememberPlants()
