@@ -116,7 +116,8 @@ async function clearData(): Promise<void> {
   if (plants.length) {
     const save = await confirmDialog({
       title: 'บันทึกข้อมูลก่อนล้าง?',
-      message: 'การล้างข้อมูลจะลบข้อมูลที่เบราว์เซอร์นี้จำไว้อย่างถาวร กู้คืนไม่ได้ — แนะนำให้กด "บันทึกไฟล์" เก็บไว้ก่อน เผื่ออยากเปิดดูข้อมูลเดิมภายหลัง',
+      // no button name quoted here: this dialog's own confirm button is what saves the file
+      message: 'การล้างข้อมูลจะลบข้อมูลที่เบราว์เซอร์นี้จำไว้อย่างถาวร กู้คืนไม่ได้ — แนะนำให้บันทึกไฟล์เก็บไว้ก่อน เผื่ออยากเปิดดูข้อมูลเดิมภายหลัง',
       confirmText: 'บันทึกไฟล์ก่อน',
       cancelText: 'ข้าม ไปล้างเลย',
     })
@@ -124,14 +125,14 @@ async function clearData(): Promise<void> {
   }
   const ok = await confirmDialog({
     title: 'ล้างข้อมูลที่จำไว้?',
-    message: 'ลบข้อมูลที่เบราว์เซอร์นี้จำไว้ทั้งหมด — ไฟล์ที่เคยกด "บันทึกไฟล์" ไว้แล้วจะไม่ถูกลบ',
+    message: 'ลบข้อมูลที่เบราว์เซอร์นี้จำไว้ทั้งหมด — ไฟล์ที่เคยกด "Save File" ไว้แล้วจะไม่ถูกลบ',
     confirmText: 'ล้างข้อมูล',
     danger: true,
   })
   if (!ok) return
   clearStored(storage)
   clearSettings(storage)
-  // also wipe any pre-migration copy still sitting in localStorage, so "ล้างข้อมูล" truly forgets
+  // also wipe any pre-migration copy still sitting in localStorage, so "Clear Data" truly forgets
   // everything (and the one-time migration can't resurrect it on the next open)
   const ls = scopedStorage(SUFFIX)
   clearStored(ls)
@@ -140,16 +141,15 @@ async function clearData(): Promise<void> {
 }
 
 let meterWarned = false
-// refresh the sidebar storage meter; warn once when the browser's quota is nearly full. The saved
-// HTML file is the durable copy — browser storage is only a cache, so near-full points there.
-async function refreshMeter(): Promise<void> {
+// Warn once when the browser's quota is nearly full. The saved HTML file is the durable copy —
+// browser storage is only a cache, so near-full points there.
+async function warnIfStorageLow(): Promise<void> {
   if (embedded) return
   const est = await storageEstimate()
   if (!est) return
-  shell.setStorage(est.usage, est.quota)
   if (est.quota > 0 && est.usage / est.quota >= 0.8 && !meterWarned) {
     meterWarned = true
-    shell.toast('พื้นที่เก็บข้อมูลใกล้เต็ม — กด "บันทึกไฟล์" เพื่อเก็บข้อมูลเป็นไฟล์ถาวร (ไฟล์ที่บันทึกไว้จะไม่หาย)', 'error')
+    shell.toast('พื้นที่เก็บข้อมูลใกล้เต็ม — กด "Save File" เพื่อเก็บข้อมูลเป็นไฟล์ถาวร (ไฟล์ที่บันทึกไว้จะไม่หาย)', 'error')
   }
 }
 
@@ -160,9 +160,9 @@ function rememberPlants(): void {
   if (embedded) return
   if (!savePlants(plants, storage) && !saveWarned) {
     saveWarned = true
-    shell.toast('เบราว์เซอร์นี้จำข้อมูลอัตโนมัติไม่ได้ (พื้นที่เต็มหรือถูกปิด) — กด "บันทึกไฟล์" เพื่อเก็บข้อมูลแทน', 'error')
+    shell.toast('เบราว์เซอร์นี้จำข้อมูลอัตโนมัติไม่ได้ (พื้นที่เต็มหรือถูกปิด) — กด "Save File" เพื่อเก็บข้อมูลแทน', 'error')
   }
-  void refreshMeter()
+  void warnIfStorageLow()
 }
 
 // open the centered preview+confirm dialog; `files` pre-fills it (drag-drop), else it opens empty.
@@ -186,9 +186,7 @@ function commitImport(ok: Imported[]): void {
     const how =
       info.action === 'merged'
         ? `รวมข้อมูล Plant ${plant.id}: เพิ่ม ${info.added} ${unit}ใหม่ (เดิม ${info.kept} ${unit} → รวม ${info.total} ${unit})`
-        : info.action === 'replaced'
-          ? `แทนที่ Plant ${plant.id} แล้ว: ${info.total} ${unit}`
-          : `เพิ่ม Plant ${plant.id} แล้ว: ${info.total} ${unit}`
+        : `เพิ่ม Plant ${plant.id} แล้ว: ${info.total} ${unit}`
     shell.toast(`${how} (${info.from} ถึง ${info.to})${skip}`)
   }
   rememberPlants()
@@ -218,7 +216,7 @@ function showSettings(plantId?: string, focus?: { key: keyof PlantSettings; scop
       settings[GLOBAL_KEY] = global
       const saved = saveSettings(settings, storage)
       shell.toast(saved ? 'บันทึกการตั้งค่าแล้ว' : 'ใช้ค่าใหม่แล้ว แต่เบราว์เซอร์นี้บันทึกถาวรไม่ได้')
-      void refreshMeter()
+      void warnIfStorageLow()
       render(current)
     },
     onRemove: (id) => {
@@ -406,7 +404,6 @@ function render(route: Route): void {
     maybeRangeFilter([plant], range, (r) => ({ view: 'plant', plant: plant.id, year: route.year, ...r })),
     todFilter([plant]),
   )
-  setFooter(plant)
   renderPlant(shell.view, viewCtx, lens([plant])[0], route.year, month, range)
 }
 
@@ -416,7 +413,6 @@ function renderOverview(route: Extract<Route, { view: 'overview' }>): void {
   const year = range ? undefined : route.year && years.includes(route.year) ? route.year : years[years.length - 1]
   const header = range ? `Overview · ${range.start} ถึง ${range.end}` : year ? `Overview · ปี ${year}` : 'Overview'
   shell.setHeader(header, [{ label: 'Overview' }])
-  setFooter()
   if (!year && !range) {
     shell.setPickers([]) // no data yet → no filter beside the welcome screen
     return renderWelcome(shell.view, shell.openImport)
@@ -438,29 +434,6 @@ function renderOverview(route: Extract<Route, { view: 'overview' }>): void {
   overviewView(shell.view, { ...viewCtx, plants: lens(plants) }, year ?? '', range)
 }
 
-function setFooter(plant?: Plant): void {
-  const list = plant ? [plant] : plants
-  const parts = list.map((p) => {
-    const note = p.source.startsWith('sample') ? ' (ข้อมูลตัวอย่างสังเคราะห์)' : ''
-    return `${displayName(p)}: ${p.source}${note} · ${p.daily[0]?.date ?? '-'} ถึง ${last(p.daily)?.date ?? '-'}`
-  })
-  shell.setFooter(parts.join('   |   '))
-}
-
-// shown when there is no data at all
-function placeholder(text: string, links: Crumb[] = []): void {
-  const box = document.createElement('div')
-  box.className = 'empty'
-  box.textContent = text
-  for (const l of links) {
-    const a = document.createElement('a')
-    a.href = l.route ? toHash(l.route) : '#/'
-    a.textContent = ` → ${l.label}`
-    box.append(a)
-  }
-  shell.view.replaceChildren(box)
-}
-
 // Storage (IndexedDB) loads asynchronously, then we fill the shared plants/settings arrays in
 // place and do the first render. The sidebar buttons render synchronously before this resolves,
 // so each sidebar action guards on `ready` (set true at the end here) to avoid running against a
@@ -474,7 +447,7 @@ async function boot(): Promise<void> {
     settings,
     embedded ? { ...embedded.settings, ...loadSettings(storage) } : loadSettings(storage),
   )
-  void refreshMeter()
+  void warnIfStorageLow()
   onRoute(render)
   ready = true // storage loaded + arrays filled + routing wired — sidebar actions may run now
 }

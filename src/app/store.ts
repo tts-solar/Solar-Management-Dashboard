@@ -92,20 +92,7 @@ export function readEmbedded(doc: Document): Snapshot | null {
   return snap
 }
 
-/** Add a plant, or replace the one with the same id (e.g. the real MH replaces the sample MH). */
-export function upsertPlant(list: Plant[], plant: Plant): 'added' | 'replaced' {
-  const i = list.findIndex((p) => p.id === plant.id)
-  if (i >= 0) {
-    list[i] = plant
-    return 'replaced'
-  }
-  list.push(plant)
-  list.sort((a, b) => a.id.localeCompare(b.id))
-  return 'added'
-}
-
 const byDate = (a: DailyRow, b: DailyRow): number => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)
-const isSample = (p: Plant): boolean => p.source.startsWith('sample')
 
 /**
  * Union two day-lists by date, keeping the EXISTING row on a clash and appending only new dates,
@@ -121,10 +108,10 @@ function mergeDaily(existing: DailyRow[], incoming: DailyRow[]): DailyRow[] {
 
 /** What importing `incoming` would do to the plant list — for the preview before the user confirms. */
 export interface MergeInfo {
-  action: 'added' | 'replaced' | 'merged'
+  action: 'added' | 'merged'
   incomingDays: number // days in the file being imported
   added: number // new dates that would be added
-  kept: number // existing dates kept unchanged (0 when added/replaced)
+  kept: number // existing dates kept unchanged (0 when added)
   total: number // resulting day count
   from: string // resulting date range start
   to: string // resulting date range end
@@ -133,14 +120,13 @@ export interface MergeInfo {
 /**
  * Describe (without mutating) how importing `incoming` combines with `existing`:
  *  - no existing plant with that id → `added` (the whole file).
- *  - existing is synthetic sample data → `replaced` wholesale (the real data supersedes the demo).
  *  - otherwise → `merged`: keep every existing day, append only the file's new dates.
  */
 export function mergeInfo(existing: Plant | undefined, incoming: Plant): MergeInfo {
-  if (!existing || isSample(existing)) {
+  if (!existing) {
     const d = incoming.daily
     return {
-      action: existing ? 'replaced' : 'added',
+      action: 'added',
       incomingDays: d.length,
       added: d.length,
       kept: 0,
@@ -162,9 +148,9 @@ export function mergeInfo(existing: Plant | undefined, incoming: Plant): MergeIn
 }
 
 /**
- * Apply an import: add a new plant, replace a sample, or merge days into an existing real plant
- * (keeping existing days, appending only new dates). Returns the same {@link MergeInfo} describing
- * what happened. A merge keeps the existing plant's id + name and adopts the new file's source name.
+ * Apply an import: add a new plant, or merge days into an existing one (keeping existing days,
+ * appending only new dates). Returns the same {@link MergeInfo} describing what happened. A merge
+ * keeps the existing plant's id + name and adopts the new file's source name.
  */
 export function applyMerge(list: Plant[], incoming: Plant): MergeInfo {
   const i = list.findIndex((p) => p.id === incoming.id)
@@ -173,8 +159,6 @@ export function applyMerge(list: Plant[], incoming: Plant): MergeInfo {
   if (!existing) {
     list.push(incoming)
     list.sort((a, b) => a.id.localeCompare(b.id))
-  } else if (info.action === 'replaced') {
-    list[i] = incoming
   } else {
     const merged: Plant = { ...existing, daily: mergeDaily(existing.daily, incoming.daily), source: incoming.source }
     if (incoming.profile) merged.profile = incoming.profile // adopt the freshest day shape
@@ -243,7 +227,7 @@ export function savePlants(plants: Plant[], kv: KV | null): boolean {
   }
 }
 
-/** Forget the auto-remembered plants for this file's scope (the "ล้างข้อมูล" button). */
+/** Forget the auto-remembered plants for this file's scope (the "Clear Data" button). */
 export function clearStored(kv: KV | null): void {
   try {
     kv?.removeItem?.(PLANTS_KEY)
@@ -254,7 +238,7 @@ export function clearStored(kv: KV | null): void {
 
 /** App key namespace — migration only copies these across, never a foreign site's localStorage keys. */
 const APP_PREFIX = 'solar-dashboard'
-/** Per-scope sentinel so the one-time localStorage→IndexedDB copy runs once and "ล้างข้อมูล" is not resurrected. */
+/** Per-scope sentinel so the one-time localStorage→IndexedDB copy runs once and "Clear Data" is not resurrected. */
 const MIGRATED_KEY = 'solar-dashboard:migrated:v1'
 
 /**

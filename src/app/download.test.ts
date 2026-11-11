@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { downloadName, extractSnapshot, injectSnapshot, snapshotTag } from './download'
-import { parseSnapshot, upsertPlant, type Snapshot } from './store'
+import { parseSnapshot, type Snapshot } from './store'
 import type { Plant } from '../data/types'
 
 const day = (date: string, produced = 10): Plant['daily'][number] => ({
@@ -74,13 +74,3 @@ describe('parseSnapshot', () => {
   })
 })
 
-describe('upsertPlant', () => {
-  it('replaces a plant with the same id and adds new ones in id order', () => {
-    const list: Plant[] = [{ id: 'MH', name: 'MH', daily: [day('2026-01-01')], source: 'sample-MH.csv' }]
-    expect(upsertPlant(list, { id: 'MH', name: 'MH', daily: [day('2026-02-01')], source: 'MH.csv' })).toBe('replaced')
-    expect(list).toHaveLength(1)
-    expect(list[0].source).toBe('MH.csv')
-    expect(upsertPlant(list, { id: 'KK', name: 'KK', daily: [], source: 'KK.csv' })).toBe('added')
-    expect(list.map((p) => p.id)).toEqual(['KK', 'MH'])
-  })
-})

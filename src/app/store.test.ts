@@ -26,12 +26,6 @@ describe('mergeInfo — preview of an import (pure, no mutation)', () => {
     expect(info).toMatchObject({ action: 'added', added: 2, kept: 0, total: 2, from: '2026-01-01', to: '2026-01-02' })
   })
 
-  it('reports a sample plant as "replaced" wholesale', () => {
-    const existing = plant('MH', ['2026-01-01'], 1, 'sample-MH.csv')
-    const info = mergeInfo(existing, plant('MH', ['2026-02-01', '2026-02-02']))
-    expect(info).toMatchObject({ action: 'replaced', added: 2, kept: 0, total: 2 })
-  })
-
   it('reports only the new dates as added for a real-plant merge', () => {
     const existing = plant('MH', ['2026-01-01', '2026-01-02', '2026-01-03']) // "months 1..3"
     const info = mergeInfo(existing, plant('MH', ['2026-01-03', '2026-01-04', '2026-01-05'])) // "3..5", 3 overlaps
@@ -67,11 +61,11 @@ describe('applyMerge — keep existing days, append only new dates', () => {
     expect(list[0].daily.find((d) => d.date === '2026-01-02')!.produced).toBe(999) // new date taken from file
   })
 
-  it('replaces a sample plant wholesale but merges a real one', () => {
+  it('merges on id alone — the existing file name never changes the outcome', () => {
     const list: Plant[] = [plant('MH', ['2026-01-01'], 1, 'sample-MH.csv')]
     applyMerge(list, plant('MH', ['2026-02-01'], 2, 'MH.csv'))
-    expect(dates(list[0])).toEqual(['2026-02-01']) // sample dropped, not merged
-    expect(list[0].source).toBe('MH.csv')
+    expect(dates(list[0])).toEqual(['2026-01-01', '2026-02-01']) // kept, not replaced
+    expect(list[0].source).toBe('MH.csv') // adopts the new file's name
   })
 
   it('adds a new plant id and keeps the list id-sorted', () => {

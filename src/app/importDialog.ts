@@ -35,7 +35,6 @@ function impact(info: MergeInfo, unit: string): string {
   if (info.action === 'merged') {
     return `รวมกับข้อมูลเดิม — เพิ่ม ${info.added} ${unit}ใหม่ (เดิม ${info.kept} ${unit} → รวม ${info.total} ${unit})`
   }
-  if (info.action === 'replaced') return `แทนที่ข้อมูลตัวอย่าง — ${info.total} ${unit}`
   return `Plant ใหม่ — ${info.total} ${unit}`
 }
 

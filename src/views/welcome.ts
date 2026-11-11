@@ -1,4 +1,5 @@
-/** Offline build, no data yet: how to import, what the CSV must look like, and where the data stays. */
+/** No data yet (either build): how to import, what the files must look like, and where the data stays.
+ *  Button names here must match the sidebar labels in app/shell.ts — they are what the user looks for. */
 
 import { downloadDailyTemplate, downloadMonthlyTemplate } from '../app/templates'
 
@@ -17,13 +18,14 @@ function list(tag: 'ol' | 'ul', items: string[]): HTMLElement {
 
 export function renderWelcome(view: HTMLElement, onPick: () => void): void {
   const box = el('section', 'welcome')
-  box.append(el('h2', '', 'เริ่มใช้งาน Solar Dashboard (Offline)'))
+  // No "(Offline)" in the heading: this screen renders in BOTH builds whenever there is no data yet.
+  box.append(el('h2', '', 'เริ่มใช้งาน Solar Dashboard'))
 
   box.append(
     list('ol', [
-      'นำเข้าไฟล์ของแต่ละ Plant ด้วยปุ่ม "เลือกไฟล์ CSV / Excel" ด้านล่าง หรือลากไฟล์มาวางบนหน้านี้ (เลือกหลายไฟล์พร้อมกันได้) · รองรับ CSV ราย 15 นาที และ Excel (.xlsx) รายงานรายเดือน · ครั้งต่อไปนำเข้าเพิ่มได้ที่เมนู "Settings" ด้านซ้าย',
-      'ดูหน้าภาพรวม แล้วคลิกเข้าไปดูราย Plant รายปี และรายเดือน · ปรับค่าของแต่ละ Plant ได้ที่เมนู "Settings" ด้านซ้าย',
-      'แอปจำข้อมูลที่นำเข้าไว้ในเบราว์เซอร์เครื่องนี้ให้อัตโนมัติ เปิดไฟล์เดิมครั้งหน้าก็เห็นข้อมูลเดิมทันที ไม่ต้องนำเข้าใหม่ · อยากได้สำเนาพกพาไปเครื่องอื่น หรืออยากลบข้อมูลที่จำไว้ ไปที่เมนู "Settings" ด้านซ้าย',
+      'นำเข้าไฟล์ของแต่ละ Plant ด้วยปุ่ม "เลือกไฟล์ CSV / Excel" ด้านล่าง หรือลากไฟล์มาวางบนหน้านี้ (เลือกหลายไฟล์พร้อมกันได้) · รองรับ CSV ราย 15 นาที และ Excel (.xlsx) รายงานรายเดือน · ครั้งต่อไปนำเข้าเพิ่มได้ที่ปุ่ม "Import Data" ในแถบเมนูด้านซ้าย',
+      'ดูหน้าภาพรวม แล้วคลิกเข้าไปดูราย Plant รายปี และรายเดือน · ปรับค่าของแต่ละ Plant ได้ที่ปุ่ม "Plant Settings" ในแถบเมนูด้านซ้าย',
+      'แอปจำข้อมูลที่นำเข้าไว้ในเบราว์เซอร์เครื่องนี้ให้อัตโนมัติ เปิดไฟล์เดิมครั้งหน้าก็เห็นข้อมูลเดิมทันที ไม่ต้องนำเข้าใหม่ · อยากได้สำเนาพกพาไปเครื่องอื่นกดปุ่ม "Save File" · อยากลบข้อมูลที่จำไว้กดปุ่ม "Clear Data" — ทั้งสองปุ่มอยู่ในแถบเมนูด้านซ้าย',
     ]),
   )
 
@@ -72,7 +74,7 @@ export function renderWelcome(view: HTMLElement, onPick: () => void): void {
     el(
       'p',
       'welcome-privacy',
-      'ข้อมูลอยู่ในเครื่องของคุณเท่านั้น — ไฟล์นี้ถูกตั้งให้ห้ามเชื่อมต่ออินเทอร์เน็ต ข้อมูลจึงไม่ถูกส่งออกไปที่ใด · แอปจำข้อมูลไว้ในเบราว์เซอร์เครื่องนี้ ถ้าใช้เครื่องร่วมกับผู้อื่นให้กดปุ่ม "ล้างข้อมูล" ก่อนเลิกใช้',
+      'ข้อมูลอยู่ในเครื่องของคุณเท่านั้น — แอปนี้ถูกตั้งให้ห้ามเชื่อมต่ออินเทอร์เน็ต ข้อมูลจึงไม่ถูกส่งออกไปที่ใด · แอปจำข้อมูลไว้ในเบราว์เซอร์เครื่องนี้ ถ้าใช้เครื่องร่วมกับผู้อื่นให้กดปุ่ม "Clear Data" ก่อนเลิกใช้',
     ),
   )
   view.replaceChildren(box)

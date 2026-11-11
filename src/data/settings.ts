@@ -116,7 +116,7 @@ export function saveSettings(map: SettingsMap, kv: KV | null = browserStorage())
   }
 }
 
-/** Forget the stored settings for this scope (used by the "ล้างข้อมูล" button). */
+/** Forget the stored settings for this scope (used by the "Clear Data" button). */
 export function clearSettings(kv: KV | null = browserStorage()): void {
   try {
     kv?.removeItem?.(STORAGE_KEY)

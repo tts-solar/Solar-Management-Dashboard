@@ -94,11 +94,8 @@ export interface Shell {
   /** Fill the top-right filter: the year/month dropdowns, an optional date-range toggle + inputs, and
    * an optional day/night toggle. */
   setPickers(pickers: Picker[], filter?: RangeFilter, tod?: TodFilter): void
-  setFooter(text: string): void
   setActive(nav: NavKey): void
   toast(message: string, kind?: 'info' | 'error'): void
-  /** No-op: the sidebar storage meter was removed. Kept so callers need no change. */
-  setStorage(used: number, quota: number): void
   /** Open the centered import dialog (e.g. from the welcome screen's button). */
   openImport(): void
   /** Refresh the header bell: badge count + the dropdown list of plants with missing data. */
@@ -244,10 +241,7 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
     sidebar.append(bottomGroup)
   }
 
-  // storage meter removed — the sidebar no longer shows a disk-usage bar (judged unnecessary).
-  // setStorage() below is kept as a no-op so its callers don't need to change.
-
-  // ── main column: header / view / footer ──
+  // ── main column: header / view ──
   const main = el('div', 'main-wrap')
   const header = el('header', 'top')
   const pageTitle = el('h2', 'page-title')
@@ -285,7 +279,6 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   })
 
   const view = el('main', 'view')
-  // footer status bar removed (judged unnecessary); setFooter() below is a no-op.
   main.append(header, view)
 
   const toastBox = el('div', 'toasts')
@@ -505,16 +498,10 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
         }
       }
     },
-    setFooter() {
-      // footer status bar removed — nothing to update
-    },
     setActive(nav) {
       for (const key of Object.keys(navLinks) as NavKey[]) navLinks[key].classList.toggle('on', key === nav)
     },
     toast,
-    setStorage() {
-      // storage meter removed from the sidebar — nothing to update
-    },
     openImport: () => h.onImport(),
     setIncomplete(items) {
       bellBadge.textContent = String(items.length)
