@@ -1095,6 +1095,8 @@ table.data tr.link:focus-visible {
     padding-left: 14px;
     padding-right: 14px;
   }
+  /* NOTE: a Report PDF page is 1280px wide whatever the window is, so it opts out of the stacking
+     below — see the `.pdf-page .page` rules in the Report PDF section. Change these, change those. */
   .page,
   .page.bottom {
     grid-template-columns: minmax(0, 1fr);
@@ -1113,6 +1115,7 @@ table.data tr.link:focus-visible {
   }
 }
 @media (max-width: 560px) {
+  /* as above: the Report PDF page overrides these two — see `.pdf-page .bep` */
   .bep {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2056,6 +2059,37 @@ dialog.export-dlg::backdrop {
    the responsive grid reflows into the 16:9 shape instead of everything just getting smaller */
 .pdf-page-fit {
   transform-origin: top left;
+}
+
+/* A report page is always 1280px wide whatever the window is doing, so it always wants the DESKTOP
+   layout — but media queries ask the viewport, not the box. On a window under 900px the stacking rules
+   below `@media (max-width: 900px)` fire inside the page too: the 57/43 split collapses to one column,
+   the content becomes about twice as tall as the slide, and fitToPage runs out of room and clips it.
+   These re-assert the wide layout by specificity (`.pdf-page .page` beats `.page`), so the printed page
+   looks the same from a phone-width window as from a wide one.
+   Mirror any change to the layout rules in `@media (max-width: 900px)` / `(max-width: 560px)` here. */
+.pdf-page .page,
+.pdf-page .page.bottom {
+  grid-template-columns: minmax(0, 57fr) minmax(0, 43fr);
+}
+.pdf-page .page > .cell,
+.pdf-page .page > .cell.left,
+.pdf-page .page > .cell.right {
+  padding: 10px 16px 14px;
+  border-top: 0;
+}
+.pdf-page .page > .cell.left {
+  padding-left: 0;
+}
+.pdf-page .page > .cell.right {
+  padding-right: 0;
+  border-left: 2px dashed var(--ink);
+}
+.pdf-page .bep {
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 30%);
+}
+.pdf-page .bep-cards {
+  grid-template-columns: 1fr;
 }
 
 /* Inside a report page nothing may depend on the window: every `vw`/`vh` size used by the dashboard is

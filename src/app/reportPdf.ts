@@ -80,7 +80,9 @@ function fitToPage(box: HTMLElement, content: HTMLElement): void {
   for (let i = 0; i < 4; i++) {
     content.style.transform = 'none'
     content.style.width = `${w / k}px`
-    const next = Math.max(0.5, Math.min(1, h / content.scrollHeight))
+    // the floor is a safety valve, not a target: shrinking past it would be unreadable anyway, and a
+    // page that needs it is a layout bug — but scaling too far still beats silently clipping content
+    const next = Math.max(0.3, Math.min(1, h / content.scrollHeight))
     const settled = Math.abs(next - k) < 0.01
     k = next
     if (settled) break
