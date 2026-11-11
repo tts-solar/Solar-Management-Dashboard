@@ -1,6 +1,6 @@
 import type { Plant } from '../data/types'
 import { monthOf, yearOf } from '../data/aggregate'
-import { MONTHS } from '../charts/common'
+import { MONTHS, PRINT_PIXEL_RATIO, atPixelRatio } from '../charts/common'
 
 /**
  * Report PDF: a presentation snapshot of the REAL dashboard (not the Export savings table). The user
@@ -134,7 +134,8 @@ function openPrintOverlay(
     page.append(box)
     doc.append(page)
     pages.push({ box, content })
-    t.render(content)
+    // print density, not screen density — a canvas reaches the PDF as a bitmap of its backing store
+    atPixelRatio(PRINT_PIXEL_RATIO, () => t.render(content))
   }
 
   overlay.append(toolbar, doc)
