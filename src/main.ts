@@ -298,7 +298,12 @@ const effectiveBoundary = (list: Plant[]): DayBoundary => todBoundary ?? autoBou
 function lens(list: Plant[]): Plant[] {
   if (tod === 'all') return list
   const b = effectiveBoundary(list)
-  return list.map((p) => ({ ...p, daily: filterDaily(p.daily, tod, b) }))
+  // The profile is dropped, not filtered: it is an average DAY, and the advisor replays it as a
+  // charge/discharge cycle to find how much surplus arrives before the demand it would cover. Keeping
+  // the whole-day profile beside day-only or night-only rows would pair two different periods; a
+  // profile cut to the lens window is worse still, since day→night shifting is the very thing it
+  // measures. Without one the advisor falls back to its daily-total estimate and says so.
+  return list.map((p) => ({ ...p, daily: filterDaily(p.daily, tod, b), profile: undefined }))
 }
 
 // The day/night toggle for the filter bar — only when the data carries per-hour bins (plants imported

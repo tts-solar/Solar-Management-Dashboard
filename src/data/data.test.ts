@@ -4,6 +4,7 @@ import { dateFromNumber, dayNumber, sumRows, toMonthly, toYearly } from './aggre
 import { bep, formatYM, resolve, withMetrics } from './metrics'
 import {
   avgTariff,
+  avgTariffForYear,
   DEFAULT_SETTINGS,
   GLOBAL_KEY,
   loadSettings,
@@ -274,6 +275,24 @@ describe('settings', () => {
     // a plant with no per-year data at all → base for every date
     const plain = withDefaults({ tariff: 5 })
     expect(tariffForDate(plain, '2024-07-01', start)).toBe(5)
+  })
+  it('avgTariffForYear averages a per-year split, and falls back to the base rate', () => {
+    const start = 2024
+    const s = withDefaults({
+      tariff: 4,
+      tariffH2: 6,
+      tariffYearly: [
+        { h1: 7, h2: 9 }, // 2024: split → mean 8
+        { h1: 6, h2: null }, // 2025: one price all year
+      ],
+    } as Partial<PlantSettings>)
+    expect(avgTariffForYear(s, 2024, start)).toBe(8)
+    expect(avgTariffForYear(s, 2025, start)).toBe(6)
+    expect(avgTariffForYear(s, 2026, start)).toBe(5) // past the array → base, mean of 4 and 6
+    expect(avgTariffForYear(s, 2023, start)).toBe(5) // before commissioning → base
+    // no per-year data at all → identical to avgTariff, so nothing changes for such a plant
+    const plain = withDefaults({ tariff: 4, tariffH2: 6 })
+    expect(avgTariffForYear(plain, 2024, start)).toBe(avgTariff(plain))
   })
   it('flags a plant whose important fields are only defaults, and clears when filled', () => {
     // Derived, not hardcoded: adding a field to REQUIRED_FIELDS must not need this line edited.

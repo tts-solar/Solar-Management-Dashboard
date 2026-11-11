@@ -1,5 +1,5 @@
 import type { DailyRow, PeriodRow, Plant } from './types'
-import { dateFromNumber, daysInMonth, dayNumber, pad, yearOf } from './aggregate'
+import { dateFromNumber, daysInMonth, dayNumber, DAYS_PER_CALENDAR_YEAR, DAYS_PER_YEAR, pad, yearOf } from './aggregate'
 import { avgTariff, PEAK_TO_KWP, tariffForDate, type PlantSettings } from './settings'
 
 /** Settings with every "auto" value worked out for one plant. */
@@ -58,7 +58,7 @@ export function resolve(plant: Plant, s: PlantSettings): Resolved {
   const kWp = s.kWp ?? Math.round((robustPeakKw(plant.daily) / PEAK_TO_KWP) * 10) / 10
   const simulatePerDay = kWp * s.sunHours * s.performanceRatio
   const investment =
-    s.investment ?? Math.round((simulatePerDay * 365 * avgTariff(s) * s.paybackPlanYears) / 1000) * 1000
+    s.investment ?? Math.round((simulatePerDay * DAYS_PER_YEAR * avgTariff(s) * s.paybackPlanYears) / 1000) * 1000
   // no commissioning date set → start from the first day of real data (plant.daily is sorted ascending)
   const startDate = s.startDate ?? plant.daily[0]?.date ?? '2020-10-01'
   return {
@@ -85,7 +85,7 @@ export function simulatePerDayOn(r: Resolved, date: string): number {
   if (sy && sy.length) {
     const idx = Math.floor(ageYears(r.startDate, date))
     const kwh = idx >= 0 && idx < sy.length ? sy[idx] : 0
-    if (kwh > 0) return kwh / 365
+    if (kwh > 0) return kwh / DAYS_PER_YEAR
   }
   return r.simulatePerDay
 }
@@ -183,7 +183,7 @@ export function cumulative(values: number[]): number[] {
 }
 
 export const ageYears = (startDate: string, asOf: string): number =>
-  Math.max(0, (dayNumber(asOf) - dayNumber(startDate)) / 365.25)
+  Math.max(0, (dayNumber(asOf) - dayNumber(startDate)) / DAYS_PER_CALENDAR_YEAR)
 
 /** 6.42 → "6Y5M" */
 export function formatYM(years: number): string {
@@ -255,7 +255,7 @@ export function bep(plant: Plant, r: Resolved, asOf?: string): BepResult {
     if (bepDay === null && r.investment > 0 && savings >= r.investment) bepDay = n - start + 1
   }
 
-  const bepYears = bepDay === null ? null : bepDay / 365.25
+  const bepYears = bepDay === null ? null : bepDay / DAYS_PER_CALENDAR_YEAR
   return {
     years,
     bepYears,

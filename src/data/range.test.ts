@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasDailyDetail, inRange, RANGE_DAILY_MAX, rangeDays, rangeIsDaily, sumRows, toMonthly } from './aggregate'
+import { hasDailyDetail, inRange, RANGE_DAILY_MAX, rangeDays, rangeIsDaily, spanDays, sumRows, toMonthly } from './aggregate'
 import type { DailyRow } from './types'
 
 const day = (date: string, produced = 10): DailyRow => ({
@@ -85,5 +85,25 @@ describe('hasDailyDetail', () => {
 
   it('is false when there is no data', () => {
     expect(hasDailyDetail([])).toBe(false)
+  })
+})
+
+describe('spanDays', () => {
+  it('counts one day per row for interval/daily data', () => {
+    expect(spanDays(daily)).toBe(31 + 28 + 31) // Jan–Mar 2026, one row per day
+    expect(spanDays(inRange(daily, '2026-01-01', '2026-01-20'))).toBe(20)
+  })
+
+  it('counts each monthly row as the days its month holds', () => {
+    expect(spanDays([day('2026-01-01'), day('2026-02-01'), day('2026-03-01')])).toBe(31 + 28 + 31)
+    expect(spanDays([day('2024-02-01')])).toBe(29) // leap year
+  })
+
+  it('is zero with no data', () => {
+    expect(spanDays([])).toBe(0)
+  })
+
+  it('counts a repeated date once', () => {
+    expect(spanDays([day('2026-01-05'), day('2026-01-05'), day('2026-01-06')])).toBe(2)
   })
 })

@@ -2,19 +2,14 @@ import type { DailyRow, DayProfile } from '../data/types'
 import type { Resolved } from '../data/metrics'
 import {
   advise,
+  headline,
   whatIf,
+  solarPerKwPerDay,
   DEFAULT_SOLAR_COST,
   DEFAULT_STORAGE_COST,
-  type Verdict,
   type WhatIfParams,
 } from '../data/advisor'
-import { baht, energy, kpiCard, pct } from '../charts/common'
-
-const HEADLINE: Record<Verdict, (size: number) => string> = {
-  solar: (s) => `แนะนำ: เพิ่ม Solar ~${s} kW`,
-  storage: (s) => `แนะนำ: เพิ่ม Energy Storage ~${s} kWh`,
-  enough: () => 'เพียงพอแล้ว',
-}
+import { baht, energy, fmt0, kpiCard, pct } from '../charts/common'
 
 const num = (v: string): number => {
   const n = Number(v)
@@ -40,6 +35,14 @@ function field(label: string, value: number, unit: string): HTMLElement {
   row.append(name, input, u)
   return row
 }
+
+/**
+ * The other side of a share: 7% self-sufficient → "93%". Every percentage in this view names its own
+ * base in the label and its remainder here, because the two shares the advisor reports are measured
+ * against DIFFERENT bases (one over what the plant produces, one over what it uses) and a bare pair
+ * of numbers like "100%" and "7%" reads as a contradiction instead of two separate facts.
+ */
+const rest = (share: number | null): string => (share === null ? '–' : pct(1 - share, 0))
 
 type CardTone = 'green' | 'yellow' | 'blue'
 
@@ -82,7 +85,9 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     </div>
     <div class="advisor-body">
       <div class="advisor-support">
-        <div class="support-title">ข้อมูลสนับสนุน <small>(เฉลี่ยต่อวัน · ${a.days} วัน)</small></div>
+        <div class="support-title">ข้อมูลสนับสนุน <small>(เฉลี่ยต่อวัน · ${a.days} วัน${
+          a.monthly ? ` · จากรายงานรายเดือน ${a.rows} เดือน` : ''
+        })</small></div>
         <div class="kpis advisor-kpis" data-kpis></div>
       </div>
       <div class="whatif">
@@ -91,17 +96,29 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
           <button type="button" role="tab" class="tab" data-mode="solar">Solar</button>
           <button type="button" role="tab" class="tab" data-mode="storage">Energy Storage</button>
         </div>
+        <div class="whatif-warn" data-whatif-warn hidden>
+          ⚠ ข้อมูลรายเดือนบอกไม่ได้ว่าไฟเหลือกับไฟที่ต้องซื้อเกิดขึ้น "คนละเวลากัน" หรือไม่ ซึ่งเป็นหัวใจของการคิดขนาดแบตเตอรี่ — ตัวเลขฝั่งนี้จึงเป็นภาพคร่าว ๆ ให้ลองเล่นดูเท่านั้น ไม่ควรใช้ตัดสินใจสั่งซื้อ
+        </div>
         <div class="whatif-fields" data-fields></div>
         <div class="kpis whatif-results" data-results></div>
       </div>
     </div>
     <p class="advisor-note" data-note></p>`
 
-  wrap.querySelector<HTMLElement>('[data-note]')!.textContent = a.sizedFromProfile
-    ? '* ขนาดแบตเตอรี่คำนวณจากโปรไฟล์ราย 15 นาที (จำลองการชาร์จ-จ่ายตามเวลาจริงของวันเฉลี่ย) จึงรวมผลของจังหวะไฟเหลือ/ไฟขาดในแต่ละช่วงเวลาแล้ว'
-    : '* ประเมินจากพลังงานรวมต่อวัน (ไฟเหลือ/ซื้อไฟที่มิเตอร์บันทึก) ไม่ใช่โปรไฟล์รายชั่วโมง — ขนาดแบตเตอรี่เป็นค่าประมาณเบื้องต้น นำเข้าไฟล์ CSV ใหม่เพื่อให้ระบบอ่านโปรไฟล์ราย 15 นาทีและระบุขนาดได้แม่นขึ้น'
+  const notes = [
+    a.sizedFromProfile
+      ? '* ขนาดแบตเตอรี่คำนวณจากโปรไฟล์ราย 15 นาที (จำลองการชาร์จ-จ่ายตามเวลาจริงของวันเฉลี่ย) จึงรวมผลของจังหวะไฟเหลือ/ไฟขาดในแต่ละช่วงเวลาแล้ว'
+      : '* ประเมินจากพลังงานรวมต่อวัน (ไฟเหลือ/ซื้อไฟที่มิเตอร์บันทึก) ไม่ใช่โปรไฟล์รายชั่วโมง — ขนาดแบตเตอรี่เป็นค่าประมาณเบื้องต้น นำเข้าไฟล์ CSV ใหม่เพื่อให้ระบบอ่านโปรไฟล์ราย 15 นาทีและระบุขนาดได้แม่นขึ้น',
+  ]
+  // monthly reports hold one row per month: the per-day figures are that month spread evenly, so they
+  // carry no day-to-day or day/night variation at all. Say so — the numbers look like measured days.
+  if (a.monthly)
+    notes.push(
+      '* ข้อมูลชุดนี้เป็นรายงานรายเดือน — ตัวเลข "ต่อวัน" คือยอดทั้งเดือนหารด้วยจำนวนวัน จึงไม่สะท้อนความต่างรายวันหรือจังหวะกลางวัน/กลางคืน ขนาด Energy Storage ที่ได้จึงเป็นเพียงค่าประมาณหยาบ',
+    )
+  wrap.querySelector<HTMLElement>('[data-note]')!.textContent = notes.join(' ')
 
-  wrap.querySelector<HTMLElement>('.verdict')!.textContent = HEADLINE[a.verdict](a.size)
+  wrap.querySelector<HTMLElement>('.verdict')!.textContent = headline(a)
   wrap.querySelector<HTMLElement>('.reason')!.textContent = a.reason
 
   // ── supporting numbers (answers "ขอข้อมูลสนับสนุน"), grouped into 3 color-coded cards:
@@ -114,9 +131,22 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     ]),
     groupCard('yellow', [
       { label: 'ซื้อไฟจากกริด', value: energy(a.avgImported), sub: '(ต่อวัน)' },
-      { label: 'ใช้ไฟที่ผลิตเอง', value: pct(a.selfConsumption, 0), sub: `(พึ่งตัวเอง ${pct(a.selfSufficiency, 0)})` },
+      // base = everything the plant USES; the kWh above it is the remainder this sub-line names
+      { label: 'ไฟที่ใช้ มาจากแผงเอง', value: pct(a.selfSufficiency, 0), sub: `(อีก ${rest(a.selfSufficiency)} ซื้อจากกริด)` },
     ]),
-    groupCard('blue', [{ label: 'ไฟเหลือขายออก', value: energy(a.avgExported), sub: '(ต่อวัน)' }], true),
+    // base = everything the plant PRODUCES. With nothing exported this share is 100% by definition
+    // and says exactly what the kWh beside it already says, so it is left out rather than printed as
+    // a second, contradictory-looking percentage.
+    groupCard(
+      'blue',
+      [
+        { label: 'ไฟเหลือขายออก', value: energy(a.avgExported), sub: '(ต่อวัน)' },
+        ...(a.avgExported > 0
+          ? [{ label: 'ไฟที่ผลิตได้ ใช้เอง', value: pct(a.selfConsumption, 0), sub: `(อีก ${rest(a.selfConsumption)} ขายออก)` }]
+          : []),
+      ],
+      true,
+    ),
   )
   // profile-only: how much is genuinely time-shiftable and the battery power the peak flow needs
   if (a.verdict === 'storage' && a.sizedFromProfile && a.powerKw !== null) {
@@ -135,24 +165,23 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     d.textContent = text
     return d
   }
-  // ใช้ไฟ/วัน is an adjustable scenario lever; ผลิตไฟ/วัน is a read-only READOUT (measured production +
-  // the Solar add-on, filled in update()) so the user compares resulting generation against use. It is
-  // NOT a lever — the calc keeps the measured production baseline, so the add-on is never counted twice.
-  const baseProduced = field('ผลิตไฟ/วัน', Math.round(a.avgProduced), 'kWh')
-  const baseProducedInput = baseProduced.querySelector('input')!
-  baseProducedInput.readOnly = true
-  baseProducedInput.tabIndex = -1
-  baseProducedInput.classList.add('is-readout')
   const baseConsumed = field('ใช้ไฟ/วัน', Math.round(a.avgConsumed), 'kWh')
   // investment levers (cost money → drive payback)
   const solarKw = field('+ Solar', a.verdict === 'solar' ? a.size : 0, 'kW')
+  // Resulting production rides on the + Solar row rather than standing in the scenario group above:
+  // it is what that very input produces (measured output + the add-on), so cause and effect belong on
+  // one line. It is a READOUT, never a lever — the calc keeps the measured production baseline, so
+  // the add-on is counted once. Being part of the row, it also hides with it on the Storage tab,
+  // where a battery changes nothing about how much the plant generates.
+  const producedOut = document.createElement('span')
+  producedOut.className = 'whatif-readout'
+  solarKw.append(producedOut)
   const storageKwh = field('+ Energy Storage', a.verdict === 'storage' ? a.size : 0, 'kWh')
   const solarCost = field('ราคา Solar', DEFAULT_SOLAR_COST, '฿/kW')
   const storageCost = field('ราคา Energy Storage', DEFAULT_STORAGE_COST, '฿/kWh')
   // the solar pair and the storage pair sit next to each other so a tab can show/hide one pair cleanly
   fields.append(
     groupLabel('สถานการณ์ (ปรับดูได้)'),
-    baseProduced,
     baseConsumed,
     groupLabel('ลงทุนเพิ่ม'),
     solarKw,
@@ -170,13 +199,16 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
   let mode: 'solar' | 'storage' = a.verdict === 'storage' ? 'storage' : 'solar'
 
   const results = wrap.querySelector('[data-results]')!
+  // shown on the Energy Storage tab only, and only for monthly data: sizing a battery is a question
+  // about timing, which a month's totals cannot answer (see headline() in advisor.ts)
+  const storageWarn = wrap.querySelector<HTMLElement>('[data-whatif-warn]')!
 
   // caption under the fields: explains the ผลิตไฟ/วัน readout + the timing caveat (producing more than
   // you use does not mean zero grid-buy — production is midday, consumption is evening/night)
   const readoutNote = document.createElement('div')
   readoutNote.className = 'whatif-readout-note'
   readoutNote.textContent =
-    '* "ผลิตไฟ/วัน" = ที่ผลิตเดิม + Solar ที่เพิ่ม · ผลิตมากกว่าใช้ ไม่ได้แปลว่าไม่ต้องซื้อไฟ (ผลิตกลางวัน/ใช้กลางคืน คนละเวลากัน)'
+    '* ตัวเลขหลังลูกศร = ไฟที่ผลิตเดิม + Solar ที่เพิ่ม · ผลิตมากกว่าใช้ ไม่ได้แปลว่าไม่ต้องซื้อไฟ (ผลิตกลางวัน/ใช้กลางคืน คนละเวลากัน)'
   fields.append(readoutNote)
 
   const update = (): void => {
@@ -192,12 +224,24 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
       storageCostPerKwh: num(input(storageCost).value),
     }
     const w = whatIf(a, r, p)
-    // fill the read-only ผลิตไฟ/วัน field with total production = measured + the Solar add-on
-    // (the same newProduced whatIf derives internally)
-    baseProducedInput.value = String(Math.round(a.avgProduced + addSolarKw * r.sunHours * r.performanceRatio))
+    // the readout beside + Solar: total production = measured + the add-on (the same newProduced
+    // whatIf derives internally)
+    producedOut.textContent = `→ ${fmt0(Math.round(a.avgProduced + addSolarKw * solarPerKwPerDay(r)))} kWh/วัน`
     const payback = w.paybackYears === null ? '–' : `${w.paybackYears.toFixed(1)} ปี`
+    // Each share is shown as before → after, so the card answers "what does this buy me" in one line
+    // instead of printing a lone new number whose base the reader has to guess. With nothing added
+    // there is no journey to show, so it falls back to the single measured value.
+    const added = addSolarKw > 0 || p.addStorageKwh > 0
+    // One share only, the one the money below it comes from: every kWh this panel stops buying is a
+    // kWh of saving. The other share (how much of its own output the plant uses rather than sells)
+    // is a fact about the plant, not about the investment, and the support cards on the left already
+    // report it — repeating it here mostly produced lines like "100% → 100%".
     results.replaceChildren(
-      kpiCard('ใช้ไฟตัวเองใหม่', pct(w.newSelfConsumption, 0), `(พึ่งตัวเอง ${pct(a.selfConsumption, 0)})`),
+      kpiCard(
+        'ไฟที่ใช้ มาจากแผงเอง',
+        added ? `${pct(a.selfSufficiency, 0)} → ${pct(w.newSelfSufficiency, 0)}` : pct(a.selfSufficiency, 0),
+        added ? '(ก่อน → หลังเพิ่ม)' : '(ตอนนี้)',
+      ),
       kpiCard('ประหยัดค่าไฟ/ปี', baht(w.annualSaving)),
       kpiCard('เงินลงทุน', baht(w.addOnCost)),
       kpiCard('คืนทุน', payback, '(ประมาณ)'),
@@ -215,11 +259,13 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     }
     for (const f of solarFields) f.style.display = m === 'solar' ? '' : 'none'
     for (const f of storageFields) f.style.display = m === 'storage' ? '' : 'none'
+    readoutNote.style.display = m === 'solar' ? '' : 'none' // it explains the + Solar row's readout
+    storageWarn.hidden = !(m === 'storage' && a.monthly)
     update()
   }
   for (const b of tabButtons) b.addEventListener('click', () => setMode(b.dataset.mode as 'solar' | 'storage'))
 
-  for (const f of [baseProduced, baseConsumed, solarKw, storageKwh, solarCost, storageCost])
+  for (const f of [baseConsumed, solarKw, storageKwh, solarCost, storageCost])
     input(f).addEventListener('input', update)
   setMode(mode) // initial render: apply the default tab's visibility + results
 

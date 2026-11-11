@@ -2173,7 +2173,8 @@ dialog.export-dlg::backdrop {
 .advisor-badge.is-solar {
   border-left-color: var(--amber);
 }
-.advisor-badge.is-enough {
+.advisor-badge.is-enough,
+.advisor-badge.is-nodata {
   border-left-color: var(--sage);
 }
 .advisor-badge .verdict {
@@ -2184,7 +2185,8 @@ dialog.export-dlg::backdrop {
 .advisor-badge.is-solar .verdict {
   color: #b9791a;
 }
-.advisor-badge.is-enough .verdict {
+.advisor-badge.is-enough .verdict,
+.advisor-badge.is-nodata .verdict {
   color: var(--gray);
 }
 .advisor-badge .reason {
@@ -2225,16 +2227,42 @@ dialog.export-dlg::backdrop {
 .whatif-results .value {
   font-size: clamp(1.1rem, 1.9vw, 1.7rem);
 }
+/* monthly data on the Energy Storage tab: the numbers there have no timing basis, so say so in the
+   panel itself rather than only in the footnote at the bottom */
+.whatif-warn {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: #fdf4e3;
+  border-left: 4px solid var(--amber);
+  border-radius: 3px;
+  color: #7a5310;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.whatif-warn[hidden] {
+  display: none;
+}
+/* One grid for ALL the rows, not a grid of independent rows: every field's label / input / unit /
+   readout is placed into the same four columns, so the input boxes line up in one column no matter
+   how long each label is or whether a row carries a readout after it. That alignment is why the
+   rows are `display: contents` — they keep the label→input association and the per-tab show/hide,
+   but hand their children to this grid. Column 1 is max-content so it fits the longest label of the
+   tab currently shown (hidden rows take no part), and never wider than the space it has.
+
+   Column 4 must stay FLEXIBLE (1fr). The group captions and the footnote span 1/-1, and a spanning
+   item's max-content demand is shared out among the intrinsic tracks it covers — with four intrinsic
+   columns the footnote's one-line width (~900px) landed in the label and unit columns and blew the
+   row apart. A flex track soaks that demand up instead, so columns 1 and 3 keep sizing to the fields
+   themselves. */
 .whatif-fields {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px 12px;
+  grid-template-columns: minmax(0, max-content) 5.5em max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
   margin-bottom: 12px;
 }
 .whatif-field {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: contents;
   font-size: 0.9rem;
 }
 /* heads a group of what-if fields (spans the whole grid row) */
@@ -2250,13 +2278,16 @@ dialog.export-dlg::backdrop {
   padding-top: 8px;
   border-top: 1px dashed var(--line);
 }
+/* Pins every row back to column 1. Without it a row that has no readout leaves column 4 empty and
+   grid auto-placement starts the NEXT row's label there, shunting that whole row one cell to the
+   right — which is exactly what the Energy Storage tab (no readout on any row) did. */
 .whatif-label {
-  flex: 1 1 auto;
+  grid-column: 1;
   font-weight: 700;
   color: var(--ink);
 }
 .whatif-field input {
-  width: 6.5em;
+  width: 5.5em;
   padding: 5px 7px;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -2268,20 +2299,25 @@ dialog.export-dlg::backdrop {
   outline-offset: 1px;
 }
 .whatif-unit {
-  width: 3.4em;
   color: var(--gray);
   font-size: 0.82rem;
+  white-space: nowrap;
 }
-/* ผลิตไฟ/วัน is a read-only readout (measured production + the Solar add-on), not a typed lever */
-.whatif-field input.is-readout {
-  border-color: transparent;
-  background: #eef4f2;
+/* The resulting production, in the fourth column of the + Solar row. Boxed like the inputs beside it
+   so it reads as part of the same row of figures, but tinted green and borderless-on-focus: it is a
+   readout, never a typed lever, so it carries no caret and never takes focus. */
+.whatif-readout {
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid #bcd6cb;
+  border-radius: 4px;
+  background: #e8f1ec;
   color: var(--green);
-  font-weight: 700;
-  cursor: default;
-}
-.whatif-field input.is-readout:focus-visible {
-  outline: none;
+  font: 700 0.82rem var(--font);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* caption that explains the readout + the timing caveat */
 .whatif-readout-note {
@@ -2303,6 +2339,12 @@ dialog.export-dlg::backdrop {
   }
   .advisor-kpis {
     grid-template-columns: repeat(3, 1fr);
+  }
+  /* no room for a fourth column on a phone: the readout drops to its own full-width line under the
+     + Solar row rather than being squeezed to an ellipsis beside it */
+  .whatif-readout {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 }
 
@@ -2382,11 +2424,9 @@ dialog.advisor-dlg::backdrop {
   margin-top: 0;
   padding-right: 32px; /* clear the ✕ */
 }
-/* the What-if column is narrower in the modal than on the page, so stack its fields (label + fixed
-   input + unit) one per row instead of two — avoids the inputs overflowing the nested cell */
+/* the What-if column is narrower in the modal than on the page: a little less air between columns */
 .advisor-dlg .whatif-fields {
-  grid-template-columns: 1fr;
-  gap: 9px;
+  gap: 9px 7px;
 }
 /* roomier modal: wider gaps, numbers kept on one line, and a soft panel that sets the interactive
    What-if simulator apart from the measured support figures on the left */

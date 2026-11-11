@@ -156,6 +156,19 @@ export const avgTariff = (s: PlantSettings): number =>
   s.tariffH2 != null ? (s.tariff + s.tariffH2) / 2 : s.tariff
 
 /**
+ * Average price across one calendar YEAR, honouring a per-year override when `tariffYearly` sets one
+ * for that project year. Use this wherever a figure is ANNUALISED (the advisor's ประหยัดค่าไฟ/ปี);
+ * `tariffForDate` stays the right call wherever a specific day is being priced (bep walks day by day).
+ * Without a `tariffYearly` entry it falls back to `avgTariff`, so a plant that sets no per-year price
+ * behaves exactly as before.
+ */
+export const avgTariffForYear = (s: PlantSettings, year: number, startYear: number): number => {
+  const yt = s.tariffYearly?.[year - startYear]
+  if (yt && yt.h1 > 0) return yt.h2 && yt.h2 > 0 ? (yt.h1 + yt.h2) / 2 : yt.h1
+  return avgTariff(s)
+}
+
+/**
  * The important fields a plant should have real values for before its numbers are trustworthy — the
  * data requested from the Owner. These are what the Settings dialog highlights and the header bell
  * flags while still unfilled.
