@@ -8,7 +8,7 @@ import { TreemapController, TreemapElement } from 'chartjs-chart-treemap'
 
 import { hasDailyDetail, monthsOf, yearsOf } from './data/aggregate'
 import { autoBoundary, filterDaily, hasHourly, type DayBoundary, type TimeOfDay } from './data/dayNight'
-import { clearSettings, GLOBAL_KEY, loadSettings, missingSettings, REQUIRED_FIELD_SCOPE, saveSettings, settingsFor, type PlantSettings, type SettingsMap } from './data/settings'
+import { clearSettings, GLOBAL_KEY, loadSettings, missingSettings, REQUIRED_FIELD_SCOPE, saveSettings, settingsFor, type PlantSettings, type RequiredField, type SettingsMap } from './data/settings'
 import type { Plant } from './data/types'
 import { go, onRoute, toHash, type Route } from './app/router'
 import { createShell, type Crumb, type RangeFilter, type TodFilter } from './app/shell'
@@ -18,7 +18,6 @@ import { capturePristine, downloadHtml, downloadBlankOffline, blankOfflineAvaila
 import { readPlantFiles, type Imported } from './app/upload'
 import { openImportDialog } from './app/importDialog'
 import { openSettings } from './app/settingsPanel'
-import { openExport } from './app/exportReport'
 import { openReportPdf } from './app/reportPdf'
 import { confirmDialog } from './app/confirm'
 import { MONTHS, destroyCharts } from './charts/common'
@@ -74,7 +73,6 @@ const shell = createShell(document.getElementById('app')!, {
   onImport: (files) => openImport(files),
   onPlantSettings: (id, focus) => showSettings(id, focus),
   onDownload: () => saveOrDownload(),
-  onExport: () => showExport(),
   onReportPdf: () => showReportPdf(),
   // No Clear Data button in a saved/embedded file — there is no remembered data to wipe there (M9).
   onClear: embedded ? undefined : () => void clearData(),
@@ -230,12 +228,6 @@ function showSettings(plantId?: string, focus?: { key: keyof PlantSettings; scop
   })
 }
 
-function showExport(): void {
-  if (notReady()) return
-  if (!plants.length) return shell.toast('ยังไม่มี Plant — นำเข้าไฟล์ CSV ก่อน', 'error')
-  openExport({ plants, settings, displayName })
-}
-
 function showReportPdf(): void {
   if (notReady()) return
   if (!plants.length) return shell.toast('ยังไม่มี Plant — นำเข้าไฟล์ CSV ก่อน', 'error')
@@ -331,14 +323,17 @@ function todFilter(list: Plant[]): TodFilter | undefined {
   }
 }
 
-// Thai labels for the important fields the bell reports as missing (the data requested from the Owner)
-const MISSING_LABELS: Partial<Record<keyof PlantSettings, string>> = {
+// Thai chip labels for the important fields the bell reports as missing (the data requested from the
+// Owner). Typed on RequiredField, not a Partial — adding a field to REQUIRED_FIELDS without a label
+// here is a compile error, so no chip can ever fall back to showing a raw key name.
+const MISSING_LABELS: Record<RequiredField, string> = {
   kWp: 'ขนาดติดตั้ง',
   performanceRatio: 'Performance Ratio',
   sunHours: 'ชั่วโมงแดดต่อวัน',
+  investment: 'เงินลงทุน',
   tariff: 'ค่าไฟ',
-  abnormalBelow: 'เกณฑ์ Efficiency ผิดปกติ',
   paybackPlanYears: 'แผนคืนทุน',
+  abnormalBelow: 'เกณฑ์ Efficiency ผิดปกติ',
   reinvestAge: 'อายุ Re-invest',
 }
 
@@ -348,7 +343,7 @@ function refreshBell(): void {
     .map((p) => ({
       id: p.id,
       name: displayName(p),
-      missing: missingSettings(settings, p.id).map((k) => ({ key: k, label: MISSING_LABELS[k] ?? k, scope: REQUIRED_FIELD_SCOPE[k] })),
+      missing: missingSettings(settings, p.id).map((k) => ({ key: k, label: MISSING_LABELS[k], scope: REQUIRED_FIELD_SCOPE[k] })),
     }))
     .filter((x) => x.missing.length > 0)
   shell.setIncomplete(items)

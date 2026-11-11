@@ -1877,7 +1877,9 @@ dialog.import-dlg::backdrop {
   font-weight: 600;
 }
 
-/* ── export report ─────────────────────────────────── */
+/* ── Report PDF: the picker dialog (plants / pages / period) ─────────── */
+/* Class names keep the historic `exp-` prefix: this dialog was shared with the
+   Export Report feature, which was removed. Report PDF is the only user now. */
 dialog.export-dlg {
   width: min(520px, calc(100vw - 32px));
   padding: 24px;
@@ -1916,22 +1918,14 @@ dialog.export-dlg::backdrop {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.exp-plants,
-.exp-gran {
+.exp-plants {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-.exp-plants {
   max-height: 34vh;
   overflow-y: auto;
 }
-.exp-gran {
-  flex-flow: row wrap;
-  gap: 18px;
-}
-.exp-check,
-.exp-radio {
+.exp-check {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1939,8 +1933,7 @@ dialog.export-dlg::backdrop {
   font-weight: 600;
   cursor: pointer;
 }
-.exp-check input,
-.exp-radio input {
+.exp-check input {
   width: 16px;
   height: 16px;
   accent-color: var(--green);
@@ -1970,7 +1963,7 @@ dialog.export-dlg::backdrop {
   font-weight: 600;
 }
 
-/* the full-screen printable report */
+/* ── Report PDF: full-screen printable overlay shell ─────────── */
 .report-overlay {
   position: fixed;
   inset: 0;
@@ -1998,113 +1991,12 @@ dialog.export-dlg::backdrop {
   font-weight: 600;
 }
 .report-doc {
-  width: min(900px, 100%);
+  /* the stack of fixed-width pages; --doc-zoom (set by app/reportPdf.ts) shrinks it to fit a window
+     narrower than one page, so the preview never needs a horizontal scrollbar. Print resets it to 1. */
+  width: 1280px;
   margin: 24px auto;
-  padding: 0 16px 48px;
-}
-.rp-page {
-  margin-bottom: 24px;
-  padding: 28px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 2px 12px rgba(17, 24, 23, 0.08);
-}
-.rp-head {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 18px;
-  padding-bottom: 16px;
-  border-bottom: 2px solid var(--green);
-}
-.rp-title h2 {
-  margin: 0;
-  font-size: 1.4rem;
-  color: var(--green);
-}
-.rp-sub {
-  margin: 4px 0 0;
-  color: var(--gray);
-  font-size: 0.85rem;
-}
-.rp-kpis {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px;
-}
-.rp-kpi {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #f4f6f5;
-}
-.rp-kpi-l {
-  color: var(--gray);
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-.rp-kpi-v {
-  color: var(--ink);
-  font-size: 0.98rem;
-  font-weight: 800;
-}
-.rp-kpi-n {
-  color: var(--gray);
-  font-size: 0.72rem;
-  font-weight: 600;
-}
-.rp-empty {
-  margin: 28px 0 8px;
-  padding: 28px 12px;
-  text-align: center;
-  color: var(--gray);
-  font-size: 0.92rem;
-  font-weight: 600;
-  background: #f4f6f5;
-  border-radius: 10px;
-}
-.rp-table {
-  width: 100%;
-  margin-bottom: 20px;
-  border-collapse: collapse;
-  font-size: 0.82rem;
-}
-.rp-table th,
-.rp-table td {
-  padding: 7px 10px;
-  text-align: right;
-  border-bottom: 1px solid var(--line);
-}
-.rp-table th:first-child,
-.rp-table td:first-child {
-  text-align: left;
-}
-.rp-table thead th {
-  border-bottom: 0;
-  background: var(--green);
-  color: #fff;
-  font-weight: 700;
-}
-.rp-table tbody tr:nth-child(even) {
-  background: #f7f9f8;
-}
-.rp-table .rp-total td {
-  border-top: 2px solid var(--green);
-  border-bottom: 0;
-  background: #eef3f1;
-  font-weight: 800;
-}
-.rp-chart-wrap h3 {
-  margin: 0 0 8px;
-  color: var(--green);
-  font-size: 0.95rem;
-}
-.rp-chart {
-  width: 100%;
-  height: auto;
+  padding: 0 0 48px;
+  zoom: var(--doc-zoom, 1);
 }
 
 @media print {
@@ -2120,56 +2012,105 @@ dialog.export-dlg::backdrop {
     display: none !important;
   }
   .report-doc {
-    width: auto;
+    width: 1280px;
     margin: 0;
     padding: 0;
-  }
-  .rp-page {
-    margin: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-    page-break-after: always;
-  }
-  .rp-page:last-child {
-    page-break-after: auto;
-  }
-  .rp-page,
-  .rp-page * {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    zoom: 1;
   }
 }
 
 /* ── Report PDF: dashboard-snapshot pages (reuse .report-overlay / .report-doc shell) ─────────── */
+/* A page is a FIXED 16:9 box: 1280×720 CSS px = 13.333in × 7.5in at 96dpi, the widescreen slide size.
+   The same rectangle on screen and on paper is what makes the preview honest — `openPrintOverlay` in
+   app/reportPdf.ts injects a matching `@page { size: … ; margin: 0 }` while the overlay is open, so the
+   paper and this box are the same shape and nothing has to be reflowed at print time. Keep these two
+   numbers in step with PAGE_W / PAGE_H there. */
 .pdf-page {
-  margin-bottom: 24px;
-  padding: 24px 28px 28px;
+  display: flex;
+  flex-direction: column;
+  width: 1280px;
+  height: 720px;
+  margin: 0 auto 24px;
+  padding: 22px 28px 26px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 2px 12px rgba(17, 24, 23, 0.08);
 }
 .pdf-page-title {
-  margin: 0 0 14px;
-  padding-bottom: 12px;
+  flex: none;
+  margin: 0 0 12px;
+  padding-bottom: 10px;
   border-bottom: 2px solid var(--green);
   color: var(--green);
   font-size: 1.3rem;
+}
+/* what is left of the page once the title is drawn — the budget fitToPage() scales the content into */
+.pdf-page-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+/* the scaled layer: fitToPage() lays the dashboard out WIDER than the box and scales it back down, so
+   the responsive grid reflows into the 16:9 shape instead of everything just getting smaller */
+.pdf-page-fit {
+  transform-origin: top left;
+}
+
+/* Inside a report page nothing may depend on the window: every `vw`/`vh` size used by the dashboard is
+   pinned to the px value its own clamp() would produce in a 1280×720 box. Without this the charts and
+   headline numbers are one size in the preview and another on paper — and the fit scale measured on
+   screen stops holding. */
+.pdf-page .chart-box {
+  height: 220px;
+}
+.pdf-page .table-wrap {
+  max-height: 220px;
+}
+.pdf-page .panel-title,
+.pdf-page .tab {
+  font-size: 1.28rem;
+}
+.pdf-page .kpi .label {
+  font-size: 1.2rem;
+}
+.pdf-page .kpi .value {
+  font-size: 2.08rem;
+}
+.pdf-page .kpi-group .label,
+.pdf-page .bep-cards .label,
+.pdf-page .advisor-kpis .label,
+.pdf-page .whatif-results .label {
+  font-size: 0.96rem;
+}
+.pdf-page .kpi-group .value {
+  font-size: 1.76rem;
+}
+.pdf-page .bep-cards .value {
+  font-size: 1.6rem;
+}
+.pdf-page .advisor-kpis .value,
+.pdf-page .whatif-results .value {
+  font-size: 1.52rem;
+}
+.pdf-page .advisor-badge .verdict {
+  font-size: 1.6rem;
+}
+.pdf-page .advisor-trigger {
+  font: 700 1.12rem var(--font);
 }
 
 @media print {
   .pdf-page {
     margin: 0;
-    padding: 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    page-break-after: always;
+    break-after: page;
   }
   .pdf-page:last-child {
-    page-break-after: auto;
+    break-after: auto;
   }
   .pdf-page,
   .pdf-page * {

@@ -585,7 +585,7 @@ export function openSettings(o: SettingsPanelOpts): void {
   pPanel.className = 'panel'
   const pick = document.createElement('select')
   pick.setAttribute('aria-label', 'เลือก Plant')
-  // ⚠ marks a plant whose important fields (kWp + the system-wide policy) are still unfilled (from stored data)
+  // ⚠ marks a plant with any REQUIRED_FIELDS value still unfilled (read from stored data, same as the bell)
   for (const p of o.plants) {
     const mark = missingSettings(o.settings, p.id).length ? '⚠ ' : ''
     pick.add(new Option(`${mark}${o.displayName(p)} (${p.id})`, p.id, false, p.id === o.plantId))
@@ -638,9 +638,10 @@ export function openSettings(o: SettingsPanelOpts): void {
 
   // ── important-field highlight + "ยังไม่ได้กรอก" warning ──
   // The important fields (the ones we asked the Owner for) get a colored accent; an empty one turns orange
-  // so the user sees exactly what still needs a real value. kWp is the per-plant important field; the rest
-  // (abnormalBelow, reinvestAge) are system-wide, shown in the global tab only. The production/money fields
-  // are per-plant with built-in defaults, so they are NOT flagged (a blank one just uses the default).
+  // so the user sees exactly what still needs a real value. Both lists are DERIVED from REQUIRED_FIELDS,
+  // so a field added there lights up here and in the header bell together — the two can't drift apart.
+  // Which tab a field lands in comes from its own `scope` in FIELDS, the same split REQUIRED_FIELD_SCOPE
+  // reports to the bell.
   const important: { input: HTMLInputElement; row: HTMLElement }[] = []
   const markImportant = (map: Map<Key, HTMLInputElement>, keys: Key[]): void => {
     for (const k of keys) {
@@ -657,8 +658,9 @@ export function openSettings(o: SettingsPanelOpts): void {
     for (const { input, row } of important) row.classList.toggle('missing', !input.value.trim())
   }
   const req = new Set<Key>(REQUIRED_FIELDS)
-  markImportant(gInputs, GLOBAL_FIELDS.filter((f) => req.has(f.key)).map((f) => f.key))
-  markImportant(pInputs, ['kWp']) // the only per-plant important field
+  const requiredIn = (fields: Field[]): Key[] => fields.filter((f) => req.has(f.key)).map((f) => f.key)
+  markImportant(gInputs, requiredIn(GLOBAL_FIELDS))
+  markImportant(pInputs, requiredIn(PLANT_FIELDS))
 
   const plantOf = (): Plant => o.plants.find((p) => p.id === pick.value) ?? o.plants[0]
   // Draft buffer: unsaved plant-tab edits for every plant touched this session. Switching the Plant

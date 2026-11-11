@@ -12,8 +12,6 @@ export interface ShellHandlers {
   onPlantSettings(plantId?: string, focus?: MissingField): void
   /** Save a portable copy of the loaded data (both builds). */
   onDownload(): void
-  /** Open the export-report dialog (pick plants + granularity → printable PDF). */
-  onExport(): void
   /** Open the Report PDF dialog (snapshot the real dashboard charts → printable PDF). */
   onReportPdf(): void
   /** Demo only: hand the client a blank copy of the offline app (absent in the offline build itself). */
@@ -112,7 +110,6 @@ const ICONS = {
   download: 'M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13z',
   trash: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
   bell: 'M12 2a6 6 0 00-6 6v3.6l-1.7 3.4A1 1 0 005.2 17h13.6a1 1 0 00.9-1.4L18 11.6V8a6 6 0 00-6-6zm0 20a3 3 0 002.8-2H9.2A3 3 0 0012 22z',
-  report: 'M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6H6zm7 1.5L18.5 9H13V3.5zM8 13h2v4H8v-4zm3-2h2v6h-2v-6zm3 3h2v3h-2v-3z',
   // printer — the Report PDF action (snapshot the dashboard to print)
   print: 'M19 8H5a3 3 0 0 0-3 3v6h4v4h12v-4h4v-6a3 3 0 0 0-3-3zm-3 11H8v-5h8v5zm3-8a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM18 3H6v4h12V3z',
   // funnel — labels the year/month pickers as a time filter so users notice they can change the range
@@ -186,7 +183,6 @@ export function createShell(root: HTMLElement, h: ShellHandlers): Shell {
   generalGroup.append(actionItem('settings', 'Plant Settings', h.onPlantSettings))
   // Offline: "Save File" sits at the sidebar bottom instead (see the bottom group below); demo keeps it here.
   if (!h.offline) generalGroup.append(actionItem('save', 'Save File', h.onDownload))
-  generalGroup.append(actionItem('report', 'Export Report', h.onExport))
   generalGroup.append(actionItem('print', 'Report PDF', h.onReportPdf))
   // A saved/embedded file has no browser-remembered data to wipe, so Clear Data is omitted there — it
   // used to render as a dead button that clearData() ignored (M9). Only wire it when a handler exists.

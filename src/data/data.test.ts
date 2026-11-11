@@ -8,6 +8,8 @@ import {
   GLOBAL_KEY,
   loadSettings,
   missingSettings,
+  REQUIRED_FIELDS,
+  REQUIRED_FIELD_SCOPE,
   saveSettings,
   settingsFor,
   tariffForDate,
@@ -274,17 +276,28 @@ describe('settings', () => {
     expect(tariffForDate(plain, '2024-07-01', start)).toBe(5)
   })
   it('flags a plant whose important fields are only defaults, and clears when filled', () => {
-    const allMissing = ['kWp', 'abnormalBelow', 'reinvestAge']
-    const complete = { kWp: 10, abnormalBelow: 70, reinvestAge: 10 }
-    // nothing filled at any layer → every important field is flagged
-    expect(missingSettings({}, 'MH')).toEqual(allMissing)
+    // Derived, not hardcoded: adding a field to REQUIRED_FIELDS must not need this line edited.
+    const complete = Object.fromEntries(REQUIRED_FIELDS.map((f) => [f, 10])) as Partial<PlantSettings>
+    // nothing filled at any layer → every important field is flagged, in REQUIRED_FIELDS order
+    expect(missingSettings({}, 'MH')).toEqual([...REQUIRED_FIELDS])
     // all filled at the plant layer → nothing flagged
     expect(missingSettings({ MH: complete }, 'MH')).toEqual([])
-    // kWp from the plant, the system-wide policy from the global layer → complete
-    const globalRest = { abnormalBelow: 70, reinvestAge: 10 }
-    expect(missingSettings({ [GLOBAL_KEY]: globalRest, MH: { kWp: 10 } }, 'MH')).toEqual([])
-    // production/money fields are no longer required → a lone global tariff leaves kWp + policy still missing
-    expect(missingSettings({ [GLOBAL_KEY]: { tariff: 4 }, MH: {} }, 'MH')).toEqual(['kWp', 'abnormalBelow', 'reinvestAge'])
+    // split across layers the way the dialog writes them: per-plant fields on the plant, policy global
+    const byScope = (scope: 'plant' | 'global'): Partial<PlantSettings> =>
+      Object.fromEntries(REQUIRED_FIELDS.filter((f) => REQUIRED_FIELD_SCOPE[f] === scope).map((f) => [f, 10]))
+    expect(missingSettings({ [GLOBAL_KEY]: byScope('global'), MH: byScope('plant') }, 'MH')).toEqual([])
+    // the production/money fields are required now: filling one clears only that one
+    const missing = missingSettings({ MH: { tariff: 4 } }, 'MH')
+    expect(missing).not.toContain('tariff')
+    expect(missing).toContain('investment')
+    expect(missing).toContain('performanceRatio')
+    expect(missing).toContain('kWp')
+    // a zero is not a real value (positive() rejects it) → still flagged
+    expect(missingSettings({ MH: { kWp: 0 } }, 'MH')).toContain('kWp')
+  })
+
+  it('every required field is reachable: each has a scope telling the bell which tab to open', () => {
+    for (const f of REQUIRED_FIELDS) expect(['plant', 'global']).toContain(REQUIRED_FIELD_SCOPE[f])
   })
 })
 

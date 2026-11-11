@@ -157,20 +157,50 @@ export const avgTariff = (s: PlantSettings): number =>
 
 /**
  * The important fields a plant should have real values for before its numbers are trustworthy — the
- * data requested from the Owner. kWp is per-plant; abnormalBelow and reinvestAge are system-wide policy
- * set once. The production/money fields (PR, sun hours, tariff, payback) are per-plant with sensible
- * built-in defaults, so a blank one is not "missing" and is not flagged. These are the fields the
- * Settings dialog highlights and the header bell flags when still unfilled.
+ * data requested from the Owner. These are what the Settings dialog highlights and the header bell
+ * flags while still unfilled.
+ *
+ * Every one of them has a built-in fallback, so a blank field never breaks the app — it quietly
+ * produces a plausible-looking number from an assumption nobody checked. That is exactly why they are
+ * flagged rather than left silent:
+ *   - kWp            → guessed from the measured peak ÷ PEAK_TO_KWP; it divides every Efficiency figure.
+ *   - performanceRatio, sunHours → the Plan (Simulate) line is kWp × sunHours × PR, so a default here
+ *                      moves Efficiency for every row at once.
+ *   - investment     → when blank it is DERIVED FROM paybackPlanYears (see metrics.resolve), which
+ *                      makes the payback chart circular: BEP lands on the plan by construction and
+ *                      "คาดการณ์" reads ≈0% no matter how the plant actually performs.
+ *   - tariff         → prices every baht of saving and the whole BEP curve.
+ *   - paybackPlanYears → the plan BEP is measured against (and the investment fallback above).
+ *   - abnormalBelow, reinvestAge → system-wide policy, set once for every plant.
+ *
+ * `startDate` is deliberately NOT here: blank means "start from the first day of real data", which is
+ * a sound default rather than a guess — and it is a string, which `missingSettings` cannot test (see
+ * `positive` below). Adding it needs that check widened first.
  */
-export const REQUIRED_FIELDS = ['kWp', 'abnormalBelow', 'reinvestAge'] as const
+export const REQUIRED_FIELDS = [
+  'kWp',
+  'performanceRatio',
+  'sunHours',
+  'investment',
+  'tariff',
+  'paybackPlanYears',
+  'abnormalBelow',
+  'reinvestAge',
+] as const
 export type RequiredField = (typeof REQUIRED_FIELDS)[number]
 
 /**
  * Which settings tab each important field lives in — tells the bell which tab to open when guiding the
  * user to fill it. `plant` = per-plant (ตั้งค่าเฉพาะ Plant); `global` = system-wide (ตั้งค่ารวม).
+ * Must match each field's `scope` in settingsPanel's FIELDS, or the bell opens the wrong tab.
  */
 export const REQUIRED_FIELD_SCOPE: Record<RequiredField, 'global' | 'plant'> = {
   kWp: 'plant',
+  performanceRatio: 'plant',
+  sunHours: 'plant',
+  investment: 'plant',
+  tariff: 'plant',
+  paybackPlanYears: 'plant',
   abnormalBelow: 'global',
   reinvestAge: 'global',
 }

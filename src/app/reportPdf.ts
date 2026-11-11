@@ -11,7 +11,12 @@ import { MONTHS } from '../charts/common'
  * Why render the live views (no html2canvas / screenshot lib): the CSP network-lock + singlefile build
  * forbid external scripts, and every chart already runs with `animation: false`, so a plain
  * `window.print()` of the on-screen charts prints cleanly. @media print hides the app and shows only
- * this overlay (reusing the Export report's print rules), one page per break.
+ * this overlay, one page per break.
+ *
+ * Every page is a fixed 16:9 slide (PAGE_W × PAGE_H below) rather than whatever paper the browser
+ * happens to be set to. Two things follow from that and they are the reason this file touches layout
+ * at all: the overlay shows the real printed rectangle, and `fitToPage` scales each page's content into
+ * it, so nothing can run off the edge or collide the way a browser-paginated page would.
  */
 
 export interface ReportPdfOpts {
@@ -49,6 +54,44 @@ function monthsInYear(plants: Plant[], year: string): string[] {
 /** Does this plant have any data in the given year? (skip its page otherwise — an empty view reads as 0). */
 const plantHasYear = (plant: Plant, year: string): boolean => plant.daily.some((d) => yearOf(d.date) === year)
 
+/**
+ * The printed page box, in CSS px at 96dpi: 1280×720 = 13.333in × 7.5in — the standard 16:9 widescreen
+ * slide. `.pdf-page` in styles.css is pinned to exactly these numbers, so the box on screen and the
+ * sheet of paper are the same rectangle and nothing is reflowed at print time. Change both together.
+ */
+const PAGE_W = 1280
+const PAGE_H = 720
+
+/**
+ * Scale one page's content until it fits the page box, and fit it to the WIDTH while doing so.
+ *
+ * The dashboard is a responsive grid, so simply shrinking it would leave a tall, narrow block floating
+ * in a wide 16:9 page. Instead the content is laid out at `boxWidth / k` — wider than the box — and
+ * scaled back down by `k`: the grid reflows into the landscape shape first, then shrinks only as much
+ * as it still has to. A wider layout is a shorter one, which in turn allows a larger `k`, so the two
+ * chase each other; the loop converges in two or three rounds and the last pass re-measures at the
+ * final width, which is what guarantees the result really fits rather than merely nearly fits.
+ */
+function fitToPage(box: HTMLElement, content: HTMLElement): void {
+  const w = box.clientWidth
+  const h = box.clientHeight
+  if (!w || !h) return
+  let k = 1
+  for (let i = 0; i < 4; i++) {
+    content.style.transform = 'none'
+    content.style.width = `${w / k}px`
+    const next = Math.max(0.5, Math.min(1, h / content.scrollHeight))
+    const settled = Math.abs(next - k) < 0.01
+    k = next
+    if (settled) break
+  }
+  // measure once more at the width we are actually keeping, so `k` is the honest fit for this layout
+  content.style.transform = 'none'
+  content.style.width = `${w / k}px`
+  k = Math.min(k, h / content.scrollHeight)
+  content.style.transform = k < 1 ? `scale(${k})` : 'none'
+}
+
 /** Build + show the print overlay: one page per selected target, real dashboard charts, then let the user print. */
 function openPrintOverlay(
   o: ReportPdfOpts,
@@ -56,8 +99,18 @@ function openPrintOverlay(
 ): void {
   const overlay = el('div', 'report-overlay')
 
+  // `@page` cannot be scoped by a selector, so the 16:9 paper size lives with the overlay and leaves
+  // with it — a plain Ctrl+P of the dashboard keeps whatever paper the browser is set to.
+  const paper = el('style')
+  paper.textContent = `@page { size: ${PAGE_W / 96}in ${PAGE_H / 96}in; margin: 0 }`
+  document.head.append(paper)
+
   const toolbar = el('div', 'report-toolbar')
-  const title = el('span', 'report-tb-title', 'รายงานพร้อมพิมพ์ — กด "พิมพ์ / บันทึก PDF" แล้วเลือกปลายทางเป็น PDF')
+  const title = el(
+    'span',
+    'report-tb-title',
+    'รายงาน 16:9 พร้อมพิมพ์ — ในกล่องพิมพ์ เลือกปลายทาง "บันทึกเป็น PDF" และปิด "ส่วนหัวและส่วนท้าย"',
+  )
   const printBtn = el('button', 'c-btn primary', 'พิมพ์ / บันทึก PDF')
   printBtn.type = 'button'
   const closeBtn = el('button', 'c-btn ghost', 'ปิด')
@@ -65,23 +118,47 @@ function openPrintOverlay(
   toolbar.append(title, printBtn, closeBtn)
 
   const doc = el('div', 'report-doc')
-  // Render each page's real charts into its content box. The overlay is already full-screen and visible,
-  // so each box has a real width when the charts mount (Chart.js reads layout at creation time).
+  // Render each page's real charts into its own scaling layer. The charts mount while the tree is still
+  // detached, so they start at zero width and catch up once it is attached — harmless, because every
+  // chart sits in a fixed-height `.chart-box`: the page's layout height does not wait on them, and
+  // fitToPage can measure as soon as the overlay is in the document.
+  const pages: { box: HTMLElement; content: HTMLElement }[] = []
   for (const t of targets) {
     const page = el('section', 'pdf-page')
     page.append(el('h2', 'pdf-page-title', t.title))
-    const content = el('div', 'pdf-page-body')
-    page.append(content)
+    const box = el('div', 'pdf-page-body')
+    const content = el('div', 'pdf-page-fit')
+    box.append(content)
+    page.append(box)
     doc.append(page)
+    pages.push({ box, content })
     t.render(content)
   }
 
   overlay.append(toolbar, doc)
   document.body.append(overlay)
 
+  // A page is a fixed 1280px wide, which is more than some windows have: shrink the whole stack to fit
+  // so the preview never needs a horizontal scrollbar. Print ignores --doc-zoom (see styles.css).
+  const fitDoc = (): void => {
+    doc.style.setProperty('--doc-zoom', String(Math.min(1, (overlay.clientWidth - 32) / PAGE_W)))
+  }
+  const fitAll = (): void => {
+    fitDoc()
+    for (const p of pages) fitToPage(p.box, p.content)
+  }
+  fitAll()
+  // again after a frame: webfont metrics and the charts' first resize can both move the natural height
+  requestAnimationFrame(fitAll)
+  window.addEventListener('resize', fitAll)
+  window.addEventListener('beforeprint', fitAll) // last word before the layout is committed to paper
+
   const close = (): void => {
     overlay.remove()
+    paper.remove() // give the browser's own paper setting back to the rest of the app
     document.removeEventListener('keydown', onKey)
+    window.removeEventListener('resize', fitAll)
+    window.removeEventListener('beforeprint', fitAll)
     o.onDone() // free the print charts + restore the live dashboard
   }
   const onKey = (e: KeyboardEvent): void => {
