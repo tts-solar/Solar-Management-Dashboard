@@ -2462,3 +2462,11 @@ dialog.advisor-dlg::backdrop {
   font-size: clamp(1.1rem, 1.6vw, 1.5rem);
   white-space: nowrap;
 }
+/* Must sit AFTER the rule above, not in the earlier phone block: same specificity, so source order
+   decides. At phone width two cards share ~250px and "7% → ไม่เกิน 100%" does not fit one of them —
+   it wraps onto a second line rather than spilling over the card beside it. */
+@media (max-width: 760px) {
+  .advisor-dlg .whatif-results .value {
+    white-space: normal;
+  }
+}

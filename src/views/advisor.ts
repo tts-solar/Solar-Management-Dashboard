@@ -108,6 +108,7 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     <p class="advisor-note" data-note></p>`
 
   const notes = [
+    '* "ไม่เกิน" = ดีที่สุดเท่าที่เป็นไปได้ ของจริงต่ำกว่านี้ เพราะไฟที่ผลิตกับไฟที่ใช้เกิดคนละเวลากัน (ผลิตกลางวัน/ใช้กลางคืน)',
     a.sizedFromProfile
       ? '* ขนาดแบตเตอรี่คำนวณจากโปรไฟล์ราย 15 นาที (จำลองการชาร์จ-จ่ายตามเวลาจริงของวันเฉลี่ย) จึงรวมผลของจังหวะไฟเหลือ/ไฟขาดในแต่ละช่วงเวลาแล้ว'
       : '* ประเมินจากพลังงานรวมต่อวัน (ไฟเหลือ/ซื้อไฟที่มิเตอร์บันทึก) ไม่ใช่โปรไฟล์รายชั่วโมง — ขนาดแบตเตอรี่เป็นค่าประมาณเบื้องต้น นำเข้าไฟล์ CSV ใหม่เพื่อให้ระบบอ่านโปรไฟล์ราย 15 นาทีและระบุขนาดได้แม่นขึ้น',
@@ -246,10 +247,15 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     // kWh of saving. The other share (how much of its own output the plant uses rather than sells)
     // is a fact about the plant, not about the investment, and the support cards on the left already
     // report it — repeating it here mostly produced lines like "100% → 100%".
+    //
+    // The projected share carries "ไม่เกิน" because it is a CEILING, not a forecast: the model lets
+    // any kWh generated in a period displace any kWh bought in that same period, while in reality
+    // the sun is on at midday and the load runs in the evening. The figure before the arrow is
+    // measured and needs no such hedge, which is why an untouched scenario shows it bare.
     results.replaceChildren(
       kpiCard(
         'ไฟที่ใช้ มาจากแผงเอง',
-        added ? `${pct(a.selfSufficiency, 0)} → ${pct(w.newSelfSufficiency, 0)}` : pct(a.selfSufficiency, 0),
+        added ? `${pct(a.selfSufficiency, 0)} → ไม่เกิน ${pct(w.newSelfSufficiency, 0)}` : pct(a.selfSufficiency, 0),
         added ? '(ก่อน → หลังเพิ่ม)' : '(ตอนนี้)',
       ),
       kpiCard('ประหยัดค่าไฟ/ปี', baht(w.annualSaving)),
