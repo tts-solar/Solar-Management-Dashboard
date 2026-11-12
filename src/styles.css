@@ -2304,8 +2304,11 @@ dialog.export-dlg::backdrop {
   white-space: nowrap;
 }
 /* The resulting production, in the fourth column of the + Solar row. Boxed like the inputs beside it
-   so it reads as part of the same row of figures, but tinted green and borderless-on-focus: it is a
-   readout, never a typed lever, so it carries no caret and never takes focus. */
+   so it reads as part of the same row of figures, but tinted green: it is a readout, never a typed
+   lever, so it carries no caret and never takes focus.
+   It WRAPS rather than ellipsising. The column is the flexible one, so between phone width and a
+   wide window it can be squeezed — and half a figure ("120,651 kWh/เ…") tells the reader nothing,
+   while two short lines still tell them everything. */
 .whatif-readout {
   min-width: 0;
   padding: 5px 7px;
@@ -2314,10 +2317,8 @@ dialog.export-dlg::backdrop {
   background: #e8f1ec;
   color: var(--green);
   font: 700 0.82rem var(--font);
+  line-height: 1.35;
   text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 /* caption that explains the readout + the timing caveat */
 .whatif-readout-note {
@@ -2463,8 +2464,8 @@ dialog.advisor-dlg::backdrop {
   white-space: nowrap;
 }
 /* Must sit AFTER the rule above, not in the earlier phone block: same specificity, so source order
-   decides. At phone width two cards share ~250px and "7% → ไม่เกิน 100%" does not fit one of them —
-   it wraps onto a second line rather than spilling over the card beside it. */
+   decides. At phone width two cards share ~250px, too narrow for a figure like "25,650,000 ฿" to
+   stay on one line — it wraps rather than spilling over the card beside it. */
 @media (max-width: 760px) {
   .advisor-dlg .whatif-results .value {
     white-space: normal;
