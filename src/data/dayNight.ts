@@ -76,3 +76,15 @@ export function filterDay(row: DailyRow, period: TimeOfDay, b: DayBoundary): Dai
 /** Apply {@link filterDay} to every row. "all" returns the input array untouched (no behaviour change). */
 export const filterDaily = (daily: DailyRow[], period: TimeOfDay, b: DayBoundary): DailyRow[] =>
   period === 'all' ? daily : daily.map((d) => filterDay(d, period, b))
+
+/** '06:00' for 6; 24 → '00:00', since a window ending at 24 ends at midnight. */
+const hh = (h: number): string => `${String(h % 24).padStart(2, '0')}:00`
+
+/**
+ * How a report names the part of the day its numbers were totalled over, e.g. 'กลางวัน 06:00–18:00'.
+ * Night is the same window read the other way round, so both labels always name one boundary.
+ */
+export function todLabel(period: TimeOfDay, b: DayBoundary): string {
+  if (period === 'all') return 'ทั้งวัน'
+  return period === 'day' ? `กลางวัน ${hh(b.start)}–${hh(b.end)}` : `กลางคืน ${hh(b.end)}–${hh(b.start)}`
+}

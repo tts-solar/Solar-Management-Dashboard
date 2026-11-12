@@ -18,7 +18,8 @@ import {
   withDefaults,
   type PlantSettings,
 } from './settings'
-import type { DailyRow, Plant } from './types'
+import { autoBoundary, DEFAULT_BOUNDARY, filterDaily, todLabel } from './dayNight'
+import type { DailyRow, HourBin, Plant } from './types'
 
 // node:fs is loaded dynamically so the browser tsconfig needs no @types/node
 const fsName: string = 'node:fs'
@@ -418,5 +419,60 @@ describe.skipIf(!realFile)('real CSV (local only, never committed)', () => {
       `[real] kWp≈${res.kWp} eff=${(total.efficiency! * 100).toFixed(1)}% cover=${(total.coverRate! * 100).toFixed(1)}% ` +
         `abnormalDays=${r!.daily.filter((d) => withMetrics(d, res).abnormal).length} bep=${b.bepYears?.toFixed(2)}y`,
     )
+  })
+})
+
+// The Report PDF time-of-day filter rests on these three: the window inferred from real production,
+// the re-total over only the kept hours, and the label the report prints so a reader knows which
+// slice of the day they are looking at.
+describe('day/night lens', () => {
+  const bins = (produced: Record<number, number>): HourBin[] =>
+    Array.from({ length: 24 }, (_, h) => ({
+      produced: produced[h] ?? 0,
+      consumed: 1,
+      exported: 0,
+      imported: h in produced ? 0 : 1,
+      samples: 4,
+    }))
+  const sun = { 8: 2, 9: 5, 10: 8, 11: 9, 12: 9, 13: 7, 14: 4, 15: 1 }
+  const hourlyDay = (date: string): DailyRow => ({
+    ...day(date, 45, 24),
+    imported: 16,
+    hourly: bins(sun),
+  })
+
+  it('reads the daytime window off when the sun actually produces', () => {
+    // 15:00 holds 1 kWh against a 9 kWh peak — above the 5% floor, so the window ends at 16
+    expect(autoBoundary([hourlyDay('2025-01-01')])).toEqual({ start: 8, end: 16 })
+  })
+
+  it('falls back to the default window with no hourly bins', () => {
+    expect(autoBoundary([day('2025-01-01', 45)])).toEqual(DEFAULT_BOUNDARY)
+  })
+
+  it('re-totals a day over the kept hours only', () => {
+    const b = { start: 8, end: 16 }
+    const rows = [hourlyDay('2025-01-01')]
+    const d = filterDaily(rows, 'day', b)[0]
+    const n = filterDaily(rows, 'night', b)[0]
+    expect(d.produced).toBe(45)
+    expect(n.produced).toBe(0)
+    expect(d.consumed).toBe(8) // 8 daytime hours at 1 kWh
+    expect(n.consumed).toBe(16)
+    expect(d.consumed + n.consumed).toBe(24) // nothing created, nothing lost
+    expect(n.imported).toBe(16)
+    expect(d.peakKw).toBe(9) // busiest hour's kWh over 1h = its average kW
+  })
+
+  it('leaves a row with no hourly bins untouched — the report says so rather than claim a window', () => {
+    const plain = day('2025-01-01', 45)
+    expect(filterDaily([plain], 'day', DEFAULT_BOUNDARY)[0]).toBe(plain)
+  })
+
+  it('names the window it was totalled over', () => {
+    expect(todLabel('all', DEFAULT_BOUNDARY)).toBe('ทั้งวัน')
+    expect(todLabel('day', { start: 6, end: 18 })).toBe('กลางวัน 06:00–18:00')
+    expect(todLabel('night', { start: 6, end: 18 })).toBe('กลางคืน 18:00–06:00')
+    expect(todLabel('day', { start: 5, end: 24 })).toBe('กลางวัน 05:00–00:00') // end 24 = midnight
   })
 })

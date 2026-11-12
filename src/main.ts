@@ -231,11 +231,17 @@ function showSettings(plantId?: string, focus?: { key: keyof PlantSettings; scop
 function showReportPdf(): void {
   if (notReady()) return
   if (!plants.length) return shell.toast('ยังไม่มี Plant — นำเข้าไฟล์ CSV ก่อน', 'error')
+  // One window for the whole document (see lens): the plants the report covers, read together. No
+  // per-hour bins anywhere → no window, and the dialog hides the control rather than offer a no-op.
+  const dayWin = hasHourly(plants.flatMap((p) => p.daily)) ? effectiveBoundary(plants) : undefined
   openReportPdf({
     plants,
     displayName,
-    renderOverview: (el, year) => overviewView(el, viewCtx, year),
-    renderPlant: (el, plant, year, month) => renderPlant(el, viewCtx, plant, year, month),
+    tod: { period: tod, window: dayWin },
+    renderOverview: (el, year, period) =>
+      overviewView(el, { ...viewCtx, plants: lens(plants, period, dayWin) }, year),
+    renderPlant: (el, plant, year, month, period) =>
+      renderPlant(el, viewCtx, lens([plant], period, dayWin)[0], year, month),
     // the print pages mount their own charts into the shared registry; tear them all down and rebuild
     // the live view so the dashboard behind the overlay is clean again (destroyCharts runs inside render).
     onDone: () => render(current),
@@ -295,15 +301,19 @@ const effectiveBoundary = (list: Plant[]): DayBoundary => todBoundary ?? autoBou
 // returns the plants unchanged (identical arrays), so the default view keeps its exact behaviour. The
 // original plants stay untouched — resolve()/kWp inside a view recompute on the lensed rows, which is
 // what a day/night view should show (night = ~0 production = pure grid dependency).
-function lens(list: Plant[]): Plant[] {
-  if (tod === 'all') return list
-  const b = effectiveBoundary(list)
+//
+// `period`/`win` are passed only by Report PDF, which picks its own period in its dialog and pins ONE
+// window across every page: a document whose plants were each cut at their own hour would be comparing
+// pages that are not the same slice of the day. On screen both default to the live toggle's state.
+function lens(list: Plant[], period: TimeOfDay = tod, win?: DayBoundary): Plant[] {
+  if (period === 'all') return list
+  const b = win ?? effectiveBoundary(list)
   // The profile is dropped, not filtered: it is an average DAY, and the advisor replays it as a
   // charge/discharge cycle to find how much surplus arrives before the demand it would cover. Keeping
   // the whole-day profile beside day-only or night-only rows would pair two different periods; a
   // profile cut to the lens window is worse still, since day→night shifting is the very thing it
   // measures. Without one the advisor falls back to its daily-total estimate and says so.
-  return list.map((p) => ({ ...p, daily: filterDaily(p.daily, tod, b), profile: undefined }))
+  return list.map((p) => ({ ...p, daily: filterDaily(p.daily, period, b), profile: undefined }))
 }
 
 // The day/night toggle for the filter bar — only when the data carries per-hour bins (plants imported
