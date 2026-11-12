@@ -45,9 +45,15 @@ export interface Advice {
   rows: number
   /** source is a monthly report, so a "typical day" is a whole month's average, not a measured day */
   monthly: boolean
+  /**
+   * Days one row of the source stands for: 1 for an interval/daily import, a month's length (~30.4)
+   * for a monthly report. The averages below are per DAY because that is what the maths needs; this
+   * is the factor that puts them back on the basis the data actually has, for display only.
+   */
+  perRowDays: number
   /** calendar year the rows end in — the year whose tariff prices the projected saving */
   year: number
-  /** per typical day, kWh */
+  /** per typical day, kWh — multiply by `perRowDays` to state it on the source's own basis */
   avgProduced: number
   avgConsumed: number
   avgExported: number // surplus sent to the grid
@@ -126,6 +132,13 @@ function simulateProfile(profile: DayProfile): {
 export function advise(daily: DailyRow[], r: Resolved, profile?: DayProfile): Advice {
   // per CALENDAR DAY, not per row — a monthly report's row holds a whole month (see spanDays)
   const days = spanDays(daily)
+  const rows = daily.length
+  const monthly = rows > 0 && !hasDailyDetail(daily)
+  // what one row covers: a day, or a month. Figures are COMPUTED per day and REPORTED on this basis,
+  // so a monthly plant is never told what it used "ต่อวัน" — a day its data never measured.
+  const perRowDays = monthly ? days / rows : 1
+  const word = monthly ? 'เดือน' : 'วัน'
+  const asRow = (perDay: number): string => fmt0(round(perDay * perRowDays))
   const perDay = (of: (d: DailyRow) => number): number => (days > 0 ? sum(daily.map(of)) / days : 0)
   const avgProduced = perDay((d) => d.produced)
   const avgConsumed = perDay((d) => d.consumed)
@@ -172,21 +185,22 @@ export function advise(daily: DailyRow[], r: Resolved, profile?: DayProfile): Ad
     verdict = 'storage'
     const shiftable = shiftableKwh ?? Math.min(avgExported, avgImported)
     size = round(shiftable / DOD)
-    reason = `ไฟเหลือขายออก ~${fmt0(round(avgExported))} kWh/วัน แต่ยังซื้อไฟ ~${fmt0(round(avgImported))} kWh/วัน — เก็บไฟเหลือไว้ใช้เองคุ้มกว่า`
+    reason = `ไฟเหลือขายออก ~${asRow(avgExported)} kWh/${word} แต่ยังซื้อไฟ ~${asRow(avgImported)} kWh/${word} — เก็บไฟเหลือไว้ใช้เองคุ้มกว่า`
   } else if (impFrac >= MEANINGFUL) {
     // buying power with little or no surplus → the plant simply makes too little. Add panels.
     verdict = 'solar'
     size = perKw > 0 ? round(avgImported / perKw) : 0
-    reason = `ผลิตไม่พอ ยังซื้อไฟ ~${fmt0(round(avgImported))} kWh/วัน และแทบไม่มีไฟเหลือให้เก็บ — เพิ่มแผงช่วยได้`
+    reason = `ผลิตไม่พอ ยังซื้อไฟ ~${asRow(avgImported)} kWh/${word} และแทบไม่มีไฟเหลือให้เก็บ — เพิ่มแผงช่วยได้`
   } else {
     // big surplus but barely any import → already covers its own load; more kit won't pay back.
     verdict = 'enough'
-    reason = `ผลิตเกินใช้ ไฟเหลือ ~${fmt0(round(avgExported))} kWh/วัน แต่ซื้อไฟน้อย — ควรขายไฟส่วนเกิน ลงทุนเพิ่มยังไม่คุ้ม`
+    reason = `ผลิตเกินใช้ ไฟเหลือ ~${asRow(avgExported)} kWh/${word} แต่ซื้อไฟน้อย — ควรขายไฟส่วนเกิน ลงทุนเพิ่มยังไม่คุ้ม`
   }
   return {
     days,
-    rows: daily.length,
-    monthly: daily.length > 0 && !hasDailyDetail(daily),
+    rows,
+    monthly,
+    perRowDays,
     year: +(daily[daily.length - 1]?.date ?? r.startDate).slice(0, 4),
     avgProduced,
     avgConsumed,
@@ -217,6 +231,13 @@ export function advise(daily: DailyRow[], r: Resolved, profile?: DayProfile): Ad
  * SOLAR is different and keeps its figure: "how many kW to cover this much yearly import" is a
  * question about ENERGY, which monthly totals answer perfectly well.
  */
+/** 'วัน' or 'เดือน' — the period one row of the source data covers, for labelling figures. */
+export const periodWord = (a: Advice): string => (a.monthly ? 'เดือน' : 'วัน')
+
+/** A per-day figure restated on the source's own basis: unchanged for a daily import, a whole month
+ *  for a monthly report. Display only — never feed the result back into the maths. */
+export const perPeriod = (a: Advice, perDay: number): number => perDay * a.perRowDays
+
 export function headline(a: Advice): string {
   if (a.verdict === 'nodata') return 'ยังไม่มีข้อมูลพอจะแนะนำ'
   if (a.verdict === 'enough') return 'เพียงพอแล้ว'

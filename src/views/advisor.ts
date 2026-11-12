@@ -3,6 +3,8 @@ import type { Resolved } from '../data/metrics'
 import {
   advise,
   headline,
+  perPeriod,
+  periodWord,
   whatIf,
   solarPerKwPerDay,
   DEFAULT_SOLAR_COST,
@@ -85,8 +87,8 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     </div>
     <div class="advisor-body">
       <div class="advisor-support">
-        <div class="support-title">ข้อมูลสนับสนุน <small>(เฉลี่ยต่อวัน · ${a.days} วัน${
-          a.monthly ? ` · จากรายงานรายเดือน ${a.rows} เดือน` : ''
+        <div class="support-title">ข้อมูลสนับสนุน <small>(${
+          a.monthly ? `เฉลี่ยต่อเดือน · ${a.rows} เดือน` : `เฉลี่ยต่อวัน · ${a.days} วัน`
         })</small></div>
         <div class="kpis advisor-kpis" data-kpis></div>
       </div>
@@ -110,11 +112,12 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
       ? '* ขนาดแบตเตอรี่คำนวณจากโปรไฟล์ราย 15 นาที (จำลองการชาร์จ-จ่ายตามเวลาจริงของวันเฉลี่ย) จึงรวมผลของจังหวะไฟเหลือ/ไฟขาดในแต่ละช่วงเวลาแล้ว'
       : '* ประเมินจากพลังงานรวมต่อวัน (ไฟเหลือ/ซื้อไฟที่มิเตอร์บันทึก) ไม่ใช่โปรไฟล์รายชั่วโมง — ขนาดแบตเตอรี่เป็นค่าประมาณเบื้องต้น นำเข้าไฟล์ CSV ใหม่เพื่อให้ระบบอ่านโปรไฟล์ราย 15 นาทีและระบุขนาดได้แม่นขึ้น',
   ]
-  // monthly reports hold one row per month: the per-day figures are that month spread evenly, so they
-  // carry no day-to-day or day/night variation at all. Say so — the numbers look like measured days.
+  // The figures above are now stated per month, which is the resolution the file really has. The
+  // MODEL underneath still works a day at a time, so it necessarily assumes every day of a month
+  // looks like the month's average — say that, because it is the limit of what monthly data can tell.
   if (a.monthly)
     notes.push(
-      '* ข้อมูลชุดนี้เป็นรายงานรายเดือน — ตัวเลข "ต่อวัน" คือยอดทั้งเดือนหารด้วยจำนวนวัน จึงไม่สะท้อนความต่างรายวันหรือจังหวะกลางวัน/กลางคืน ขนาด Energy Storage ที่ได้จึงเป็นเพียงค่าประมาณหยาบ',
+      '* ข้อมูลชุดนี้เป็นรายงานรายเดือน ตัวเลขจึงเป็นยอดรวมต่อเดือน — การประเมินภายในเฉลี่ยทุกวันในเดือนให้เท่ากัน ทั้งที่จริงแต่ละวันใช้ไฟไม่เท่ากัน ผลที่ได้จึงเป็นภาพรวม ไม่ใช่ค่าที่จะเกิดขึ้นจริงทุกวัน และขนาด Energy Storage เป็นเพียงค่าประมาณหยาบ',
     )
   wrap.querySelector<HTMLElement>('[data-note]')!.textContent = notes.join(' ')
 
@@ -124,13 +127,17 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
   // ── supporting numbers (answers "ขอข้อมูลสนับสนุน"), grouped into 3 color-coded cards:
   //    green = produce vs use · yellow = where the used power comes from · blue = surplus sold out ──
   const kpis = wrap.querySelector('[data-kpis]')!
+  // energies are reported on the source's own basis; the per-period caption says which it is. The
+  // shares below are ratios of two figures on the SAME basis, so they read the same either way.
+  const per = `(ต่อ${periodWord(a)})`
+  const amount = (perDay: number): string => energy(perPeriod(a, perDay))
   kpis.append(
     groupCard('green', [
-      { label: 'ไฟที่ใช้ทั้งหมด', value: energy(a.avgConsumed), sub: '(ต่อวัน)' },
-      { label: 'ไฟที่ผลิตได้', value: energy(a.avgProduced), sub: '(ต่อวัน)' },
+      { label: 'ไฟที่ใช้ทั้งหมด', value: amount(a.avgConsumed), sub: per },
+      { label: 'ไฟที่ผลิตได้', value: amount(a.avgProduced), sub: per },
     ]),
     groupCard('yellow', [
-      { label: 'ซื้อไฟจากกริด', value: energy(a.avgImported), sub: '(ต่อวัน)' },
+      { label: 'ซื้อไฟจากกริด', value: amount(a.avgImported), sub: per },
       // base = everything the plant USES; the kWh above it is the remainder this sub-line names
       { label: 'ไฟที่ใช้ มาจากแผงเอง', value: pct(a.selfSufficiency, 0), sub: `(อีก ${rest(a.selfSufficiency)} ซื้อจากกริด)` },
     ]),
@@ -140,7 +147,7 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     groupCard(
       'blue',
       [
-        { label: 'ไฟเหลือขายออก', value: energy(a.avgExported), sub: '(ต่อวัน)' },
+        { label: 'ไฟเหลือขายออก', value: amount(a.avgExported), sub: per },
         ...(a.avgExported > 0
           ? [{ label: 'ไฟที่ผลิตได้ ใช้เอง', value: pct(a.selfConsumption, 0), sub: `(อีก ${rest(a.selfConsumption)} ขายออก)` }]
           : []),
@@ -151,7 +158,7 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
   // profile-only: how much is genuinely time-shiftable and the battery power the peak flow needs
   if (a.verdict === 'storage' && a.sizedFromProfile && a.powerKw !== null) {
     kpis.append(
-      kpiCard('เก็บมาใช้ได้จริง', energy(a.shiftableKwh ?? 0), '(ต่อวัน · ตามจังหวะเวลา)'),
+      kpiCard('เก็บมาใช้ได้จริง', amount(a.shiftableKwh ?? 0), `(ต่อ${periodWord(a)} · ตามจังหวะเวลา)`),
       kpiCard('กำลังแบตที่ควรมี', `${a.powerKw.toFixed(1)} kW`, '(จากช่วงที่ไฟไหลแรงสุด)'),
     )
   }
@@ -165,7 +172,9 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     d.textContent = text
     return d
   }
-  const baseConsumed = field('ใช้ไฟ/วัน', Math.round(a.avgConsumed), 'kWh')
+  // the one real scenario lever, typed and shown on the source's own basis (per month for a monthly
+  // report); update() divides it back to per-day before the calc, which works in days throughout
+  const baseConsumed = field(`ใช้ไฟ/${periodWord(a)}`, Math.round(perPeriod(a, a.avgConsumed)), 'kWh')
   // investment levers (cost money → drive payback)
   const solarKw = field('+ Solar', a.verdict === 'solar' ? a.size : 0, 'kW')
   // Resulting production rides on the + Solar row rather than standing in the scenario group above:
@@ -203,8 +212,8 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
   // about timing, which a month's totals cannot answer (see headline() in advisor.ts)
   const storageWarn = wrap.querySelector<HTMLElement>('[data-whatif-warn]')!
 
-  // caption under the fields: explains the ผลิตไฟ/วัน readout + the timing caveat (producing more than
-  // you use does not mean zero grid-buy — production is midday, consumption is evening/night)
+  // caption under the fields: explains the production readout + the timing caveat (producing more
+  // than you use does not mean zero grid-buy — production is midday, consumption is evening/night)
   const readoutNote = document.createElement('div')
   readoutNote.className = 'whatif-readout-note'
   readoutNote.textContent =
@@ -214,10 +223,11 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
   const update = (): void => {
     const addSolarKw = mode === 'solar' ? num(input(solarKw).value) : 0
     const p: WhatIfParams = {
-      // ผลิตไฟ/วัน is a readout, not a lever — keep the measured production baseline so the Solar
-      // add-on (below) is applied once, never double-counted from the field's own displayed total.
+      // production is a readout, not a lever — keep the measured baseline so the Solar add-on
+      // (below) is applied once, never double-counted from the readout's own displayed total.
       baseProduced: a.avgProduced,
-      baseConsumed: num(input(baseConsumed).value),
+      // typed on the row's basis (kWh per month for a monthly report) → back to per day for the calc
+      baseConsumed: num(input(baseConsumed).value) / a.perRowDays,
       addSolarKw,
       addStorageKwh: mode === 'storage' ? num(input(storageKwh).value) : 0,
       solarCostPerKw: num(input(solarCost).value),
@@ -226,7 +236,7 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     const w = whatIf(a, r, p)
     // the readout beside + Solar: total production = measured + the add-on (the same newProduced
     // whatIf derives internally)
-    producedOut.textContent = `→ ${fmt0(Math.round(a.avgProduced + addSolarKw * solarPerKwPerDay(r)))} kWh/วัน`
+    producedOut.textContent = `→ ${fmt0(Math.round(perPeriod(a, a.avgProduced + addSolarKw * solarPerKwPerDay(r))))} kWh/${periodWord(a)}`
     const payback = w.paybackYears === null ? '–' : `${w.paybackYears.toFixed(1)} ปี`
     // Each share is shown as before → after, so the card answers "what does this buy me" in one line
     // instead of printing a lone new number whose base the reader has to guess. With nothing added

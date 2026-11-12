@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { advise, headline, whatIf, DOD, ROUND_TRIP } from './advisor'
+import { advise, headline, perPeriod, periodWord, whatIf, DOD, ROUND_TRIP } from './advisor'
 import { resolve } from './metrics'
 import { DAYS_PER_YEAR } from './aggregate'
 import { withDefaults, type PlantSettings } from './settings'
@@ -309,5 +309,48 @@ describe('number formatting in the verdict line', () => {
     expect(a.verdict).toBe('solar')
     expect(headline(a)).toBe('แนะนำ: เพิ่ม Solar ~11,111 kW')
     expect(a.reason).toContain('40,000 kWh/วัน')
+  })
+})
+
+/**
+ * Monthly data is COMPUTED per calendar day (the maths needs that) but REPORTED per month, the
+ * resolution the file actually has — a monthly plant is never told what it used "ต่อวัน", a day its
+ * data never measured.
+ */
+describe('reporting basis', () => {
+  it('restates a monthly plant per month and says so', () => {
+    const perMonth = 6000
+    const daily = year(2025, perMonth, perMonth, 1800, 1800) // 2025: 365 days over 12 rows
+    const a = advise(daily, r(daily))
+    expect(a.monthly).toBe(true)
+    expect(periodWord(a)).toBe('เดือน')
+    expect(a.perRowDays).toBeCloseTo(365 / 12)
+    // computed per day, reported per month — and the reported figure is the real monthly total back
+    expect(a.avgConsumed).toBeCloseTo((perMonth * 12) / 365)
+    expect(perPeriod(a, a.avgConsumed)).toBeCloseTo(perMonth)
+    expect(a.reason).toContain('kWh/เดือน')
+    expect(a.reason).not.toContain('kWh/วัน')
+  })
+
+  it('leaves a daily import exactly as it was', () => {
+    const daily = tenDays(100, 100, 30, 30)
+    const a = advise(daily, r(daily))
+    expect(a.monthly).toBe(false)
+    expect(periodWord(a)).toBe('วัน')
+    expect(a.perRowDays).toBe(1)
+    expect(perPeriod(a, a.avgConsumed)).toBeCloseTo(a.avgConsumed)
+    expect(a.reason).toContain('kWh/วัน')
+  })
+
+  it('keeps the sizing on the per-day basis, whatever the figures are reported in', () => {
+    // the recommendation must not move when only the REPORTING basis changes
+    const monthly = year(2025, 1000, 10_000, 20, 9000)
+    const a = advise(monthly, r(monthly))
+    expect(a.size).toBe(Math.round(a.avgImported / 3.6)) // per-day import ÷ per-day yield, not × 30
+    // a battery is a physical capacity for ONE cycle, so it is never restated per month either
+    const store = year(2025, 6000, 6000, 1800, 1800)
+    const b = advise(store, r(store))
+    expect(b.verdict).toBe('storage')
+    expect(b.size).toBe(Math.round(Math.min(b.avgExported, b.avgImported) / DOD))
   })
 })
