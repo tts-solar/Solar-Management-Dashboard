@@ -2256,7 +2256,7 @@ dialog.export-dlg::backdrop {
    themselves. */
 .whatif-fields {
   display: grid;
-  grid-template-columns: minmax(0, max-content) 5.5em max-content minmax(0, 1fr);
+  grid-template-columns: minmax(0, max-content) 7em max-content minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
@@ -2286,13 +2286,23 @@ dialog.export-dlg::backdrop {
   font-weight: 700;
   color: var(--ink);
 }
+/* Wide enough for seven digits: these fields hold a whole month's energy for a large plant
+   (129,045 kWh and up), not a day's. The spin buttons are removed because `step="any"` makes them
+   meaningless here, and in Chrome they overlay the right-hand end of the box — exactly where
+   `text-align: right` puts the last digits. */
 .whatif-field input {
-  width: 5.5em;
+  width: 7em;
   padding: 5px 7px;
   border: 1px solid var(--line);
   border-radius: 4px;
   font: 600 0.9rem var(--font);
   text-align: right;
+  appearance: textfield;
+}
+.whatif-field input::-webkit-outer-spin-button,
+.whatif-field input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
 }
 .whatif-field input:focus-visible {
   outline: 2px solid var(--amber);

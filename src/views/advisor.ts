@@ -237,7 +237,9 @@ export function advisorSection(daily: DailyRow[], r: Resolved, profile?: DayProf
     const w = whatIf(a, r, p)
     // the readout beside + Solar: total production = measured + the add-on (the same newProduced
     // whatIf derives internally)
-    producedOut.textContent = `→ ${fmt0(Math.round(perPeriod(a, a.avgProduced + addSolarKw * solarPerKwPerDay(r))))} kWh/${periodWord(a)}`
+    // ⁠ is a word joiner after the slash: without it the box, when it has to wrap, breaks at
+    // the "/" and leaves a dangling "kWh/" above "เดือน". The break now falls before the unit.
+    producedOut.textContent = `→ ${fmt0(Math.round(perPeriod(a, a.avgProduced + addSolarKw * solarPerKwPerDay(r))))} kWh/⁠${periodWord(a)}`
     const payback = w.paybackYears === null ? '–' : `${w.paybackYears.toFixed(1)} ปี`
     // Each share is shown as before → after, so the card answers "what does this buy me" in one line
     // instead of printing a lone new number whose base the reader has to guess. With nothing added
