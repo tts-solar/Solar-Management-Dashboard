@@ -1,7 +1,7 @@
 import type { Plant } from '../data/types'
 import { monthOf, yearOf } from '../data/aggregate'
 import { MONTHS, PRINT_PIXEL_RATIO, atPixelRatio } from '../charts/common'
-import { DEFAULT_BOUNDARY, hasHourly, todLabel, type DayBoundary, type TimeOfDay } from '../data/dayNight'
+import { hasHourly, todLabel, type TimeOfDay } from '../data/dayNight'
 
 /**
  * Report PDF: a presentation snapshot of the REAL dashboard (not the Export savings table). The user
@@ -24,12 +24,11 @@ export interface ReportPdfOpts {
   plants: Plant[]
   displayName(p: Plant): string
   /**
-   * The day/night lens: the period the dashboard is showing right now (the dialog opens on it, so a
-   * report matches the screen it was made from) and the daytime window in force. `window` absent means
-   * no plant carries per-hour bins, so the lens cannot cut anything — the dialog then hides the control,
-   * the same rule the on-screen toggle follows.
+   * Can the data be cut down to the hours the array produces at all? False when no plant carries
+   * per-hour bins: the choice is then left out of the dialog rather than offered as a no-op, the same
+   * rule the on-screen day/night toggle follows.
    */
-  tod: { period: TimeOfDay; window?: DayBoundary }
+  canFilterByProduction: boolean
   /** Render the Overview dashboard (real charts) into `el` for the given year, over `tod` only. */
   renderOverview(el: HTMLElement, year: string, tod: TimeOfDay): void
   /** Render one plant's dashboard (real charts) into `el` for the given year (+ optional 'MM' month), over `tod` only. */
@@ -247,22 +246,29 @@ export function openReportPdf(o: ReportPdfOpts): void {
   fillMonths()
   yearSel.addEventListener('change', fillMonths) // new year → its own months, reset to ทั้งปี
 
-  // Day/night lens: cut every page down to the hours the sun actually works (or to the night). The row
-  // is built either way (the handler always reads the select) but only reaches the dialog when some
-  // plant carries per-hour bins — with none, every choice would print identical numbers under a title
-  // claiming a window, which is worse than offering no control at all. It is left out rather than
-  // hidden because `.exp-year`'s own `display: flex` would beat the browser's `[hidden]` rule.
-  const todWindow = o.tod.window ?? DEFAULT_BOUNDARY
-  const todBox = el('div', 'exp-year')
+  // Cut the report down to the hours the array actually produces. Two choices, not the dashboard's
+  // three-way lens: a report is read by someone who was not there to pick it, and "night only" is a
+  // diagnostic view rather than something to hand over. Radios, so both choices are readable without
+  // opening anything, and ALL is always the one that starts selected — a document should not quietly
+  // inherit whatever lens the screen happened to be on. The row is built either way (the handler
+  // always reads it) but only reaches the dialog when some plant carries per-hour bins: with none,
+  // both choices would print identical numbers under a title claiming otherwise.
+  const todBox = el('div', 'exp-plants')
   todBox.append(el('span', 'exp-label', 'ช่วงเวลา'))
-  const todSel = el('select', 'exp-select')
-  for (const period of ['all', 'day', 'night'] as const) {
-    const opt = el('option', '', period === 'all' ? 'ทั้งวัน' : `เฉพาะ${todLabel(period, todWindow)}`)
-    opt.value = period
-    todSel.append(opt)
+  const todChoices: { period: TimeOfDay; input: HTMLInputElement }[] = []
+  for (const [period, text] of [
+    ['all', 'ข้อมูลทั้งหมด'],
+    ['day', 'เฉพาะเวลาที่ผลิตไฟ'],
+  ] as const) {
+    const row = el('label', 'exp-check')
+    const input = el('input')
+    input.type = 'radio'
+    input.name = 'rp-tod' // one group; the dialog is modal and leaves with its radios
+    input.checked = period === 'all'
+    row.append(input, el('span', '', text))
+    todBox.append(row)
+    todChoices.push({ period, input })
   }
-  todSel.value = o.tod.window ? o.tod.period : 'all'
-  todBox.append(todSel)
 
   const actions = el('div', 'confirm-actions')
   const cancel = el('button', 'c-btn ghost', 'ยกเลิก')
@@ -279,7 +285,7 @@ export function openReportPdf(o: ReportPdfOpts): void {
   ovBox.addEventListener('change', clearErr)
   yearSel.addEventListener('change', clearErr)
 
-  dlg.append(head, plantBox, ovBox, yearBox, monthBox, ...(o.tod.window ? [todBox] : []), err, actions)
+  dlg.append(head, plantBox, ovBox, yearBox, monthBox, ...(o.canFilterByProduction ? [todBox] : []), err, actions)
   document.body.append(dlg)
 
   const close = (): void => {
@@ -298,15 +304,15 @@ export function openReportPdf(o: ReportPdfOpts): void {
     const year = yearSel.value
     const month = monthSel.value || undefined
     const monthLabel = month ? ` · ${MONTHS[+month - 1]}` : ''
-    const tod = todSel.value as TimeOfDay
+    const tod = todChoices.find((c) => c.input.checked)?.period ?? 'all'
     // The lens belongs in the title: a page of daytime-only totals that says nothing about it reads as
     // a whole day and understates the consumption. A plant with no per-hour bins came through the lens
     // untouched, so its page says so instead of claiming a window its numbers never passed through.
     const todPart = (whole: boolean, some: boolean): string => {
       if (tod === 'all') return ''
-      if (whole) return ` · เฉพาะ${todLabel(tod, todWindow)}`
+      if (whole) return ` · ${todLabel(tod)}`
       return some
-        ? ` · เฉพาะ${todLabel(tod, todWindow)} (บาง Plant ไม่มีข้อมูลรายชั่วโมง จึงนับทั้งวัน)`
+        ? ` · ${todLabel(tod)} (บาง Plant ไม่มีข้อมูลรายชั่วโมง จึงนับทั้งวัน)`
         : ' · ทั้งวัน (ไม่มีข้อมูลรายชั่วโมง)'
     }
     const targets: { title: string; render(box: HTMLElement): void }[] = []

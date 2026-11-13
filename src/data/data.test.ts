@@ -469,10 +469,9 @@ describe('day/night lens', () => {
     expect(filterDaily([plain], 'day', DEFAULT_BOUNDARY)[0]).toBe(plain)
   })
 
-  it('names the window it was totalled over', () => {
-    expect(todLabel('all', DEFAULT_BOUNDARY)).toBe('ทั้งวัน')
-    expect(todLabel('day', { start: 6, end: 18 })).toBe('กลางวัน 06:00–18:00')
-    expect(todLabel('night', { start: 6, end: 18 })).toBe('กลางคืน 18:00–06:00')
-    expect(todLabel('day', { start: 5, end: 24 })).toBe('กลางวัน 05:00–00:00') // end 24 = midnight
+  it('names the slice of the day by what the panels are doing', () => {
+    expect(todLabel('all')).toBe('ทั้งวัน')
+    expect(todLabel('day')).toBe('เฉพาะเวลาที่แผง Solar ผลิตไฟเท่านั้น')
+    expect(todLabel('night')).toBe('เฉพาะเวลาที่แผง Solar ไม่ผลิตไฟ')
   })
 })

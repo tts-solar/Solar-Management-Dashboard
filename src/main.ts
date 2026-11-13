@@ -237,7 +237,7 @@ function showReportPdf(): void {
   openReportPdf({
     plants,
     displayName,
-    tod: { period: tod, window: dayWin },
+    canFilterByProduction: dayWin !== undefined,
     renderOverview: (el, year, period) =>
       overviewView(el, { ...viewCtx, plants: lens(plants, period, dayWin) }, year),
     renderPlant: (el, plant, year, month, period) =>
