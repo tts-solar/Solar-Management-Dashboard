@@ -128,7 +128,7 @@ function openSupplierDialog(opts: { title: string; startYear: number; initial: n
   const note = document.createElement('p')
   note.className = 'note'
   note.textContent =
-    'พลังงานที่ผู้ขายคาดว่าจะผลิตได้ต่อปี (kWh) — เส้น Simulate จะใช้ค่านี้ (÷365 ต่อวัน) แทนสูตร · ปีไหนเว้นว่าง = ใช้สูตรเดิม · วางทั้งคอลัมน์จากเอกสารลงช่องแรกได้'
+    'พลังงานที่ผู้ขายคาดว่าจะผลิตได้ต่อปี (kWh) — เส้น Simulate จะใช้ค่านี้ (หารด้วยจำนวนวันของปีนั้นเป็นค่ารายวัน เดือนไหนมีกี่วันก็คูณเท่านั้น) แทนสูตร · ปีไหนเว้นว่าง = ใช้สูตรเดิม · วางทั้งคอลัมน์จากเอกสารลงช่องแรกได้'
 
   const numInput = (ph: string, value = ''): HTMLInputElement => {
     const i = document.createElement('input')
@@ -624,7 +624,7 @@ export function openSettings(o: SettingsPanelOpts): void {
   const supplierSpan = document.createElement('span')
   supplierSpan.append(
     document.createTextNode('ค่า Simulate '),
-    helpBtn('ใส่พลังงานรายปี (kWh) ที่ผู้ขายคาดการณ์ไว้ — เส้น Simulate จะใช้ค่านี้ (÷365 ต่อวัน) แทนสูตร; ปีที่เว้นว่างกลับไปใช้สูตร'),
+    helpBtn('ใส่พลังงานรายปี (kWh) ที่ผู้ขายคาดการณ์ไว้ — เส้น Simulate จะใช้ค่านี้ (หารด้วยจำนวนวันของปีนั้นเป็นค่ารายวัน เดือนไหนมีกี่วันก็คูณเท่านั้น) แทนสูตร; ปีที่เว้นว่างกลับไปใช้สูตร'),
   )
   const supplierStatus = Object.assign(document.createElement('small'), { className: 'supplier-status' })
   // status rides in the label column so the grey box can sit in grid col-2 (aligned with the inputs above)

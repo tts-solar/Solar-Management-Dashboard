@@ -10,6 +10,8 @@ export const pad = (n: number): string => String(n).padStart(2, '0')
  *   - DAYS_PER_CALENDAR_YEAR turns a COUNT OF ELAPSED DAYS into years (plant age, break-even).
  *     That is calendar arithmetic, and leap days are real days, so the mean year length applies.
  * Both values are unchanged from the literals they replace — only the intent is now written down.
+ * Neither fits a figure that belongs to ONE NAMED year, such as a supplier's projected kWh for 2024:
+ * that year has its own length, so spreading it over days calls daysInYear() below.
  */
 export const DAYS_PER_YEAR = 365
 export const DAYS_PER_CALENDAR_YEAR = 365.25
@@ -22,6 +24,14 @@ export function daysInMonth(year: number, month: number): number {
 export function dayNumber(date: string): number {
   const [y, m, d] = date.split('-').map(Number)
   return Date.UTC(y, m - 1, d) / 86400000
+}
+
+/**
+ * The real length of one named year: 365, or 366 when it holds a 29 February. Use it to spread a figure
+ * quoted FOR that year over its days — a flat 365 would hand a leap year a 366th day of it (+0.27%).
+ */
+export function daysInYear(year: number): number {
+  return dayNumber(`${year + 1}-01-01`) - dayNumber(`${year}-01-01`)
 }
 
 export function dateFromNumber(n: number): string {

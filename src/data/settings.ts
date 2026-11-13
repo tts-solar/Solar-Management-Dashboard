@@ -13,7 +13,7 @@ export interface PlantSettings {
   investment: number | null // THB; null → sized so the plan pays back in paybackPlanYears
   paybackPlanYears: number
   reinvestAge: number // years — the dashed "Age of Plant" line in the efficiency/age chart (global only, not per-plant)
-  supplierYearly?: number[] // per-plant: supplier's projected yearly energy (kWh), index 0 = project year 1. Where a year has a value, Simulate uses it (÷365 per day) instead of the kWp×sunHours×PR formula; a 0/blank year falls back to the formula.
+  supplierYearly?: number[] // per-plant: supplier's projected yearly energy (kWh), index 0 = project year 1. Where a year has a value, Simulate uses it (÷ that year's own days for a daily rate, so a month plans for as many days as it holds) instead of the kWp×sunHours×PR formula; a 0/blank year falls back to the formula.
   tariffYearly?: { h1: number; h2: number | null }[] // per-plant: electricity price per project year, index 0 = commissioning year (mirrors supplierYearly). h1 = months 1-6, h2 = months 7-12 (null → h1 all year). A year with h1<=0 → fall back to the base tariff/tariffH2.
 }
 

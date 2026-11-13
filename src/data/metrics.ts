@@ -1,5 +1,5 @@
 import type { DailyRow, PeriodRow, Plant } from './types'
-import { dateFromNumber, daysInMonth, dayNumber, DAYS_PER_CALENDAR_YEAR, DAYS_PER_YEAR, pad, yearOf } from './aggregate'
+import { dateFromNumber, daysInMonth, daysInYear, dayNumber, DAYS_PER_CALENDAR_YEAR, DAYS_PER_YEAR, pad, yearOf } from './aggregate'
 import { avgTariff, PEAK_TO_KWP, tariffForDate, type PlantSettings } from './settings'
 
 /** Settings with every "auto" value worked out for one plant. */
@@ -75,17 +75,24 @@ export function resolve(plant: Plant, s: PlantSettings): Resolved {
 }
 
 /**
- * Expected kWh for ONE day, by date. When the plant has the supplier's yearly figures, the day takes
- * that project-year's value ÷ 365; a year with no supplier figure (0/blank) falls back to the
- * kWp×sunHours×PR formula. No supplier data at all → the formula, exactly as before.
- * Project year is 0-based: the first year after the commissioning date is index 0.
+ * Expected kWh for ONE day, by date. A supplier figure is a YEAR's energy spread evenly over the year's
+ * days, so every day of the year is planned the same and a MONTH is planned for exactly as many days as
+ * it holds. February therefore sits below January on the monthly chart: that step is the three days
+ * February does not have, not noise. The alternative — cutting the year into twelve equal months — draws
+ * a flat line, but only by claiming February can earn as much as January, so the day is kept as the unit
+ * the supplier's figure is divided by.
+ * The divisor is the real length of the calendar year the day falls in, not a flat 365: a figure quoted
+ * for 2024 has 366 days to be earned over, and dividing it by 365 would plan for 0.27% more energy than
+ * the supplier ever promised. A whole year of days therefore adds up to exactly the figure entered.
+ * A year with no supplier figure (0/blank) falls back to the kWp×sunHours×PR formula, as does a plant
+ * with no supplier data at all. Project year is 0-based: the first year after commissioning is index 0.
  */
 export function simulatePerDayOn(r: Resolved, date: string): number {
   const sy = r.supplierYearly
   if (sy && sy.length) {
     const idx = Math.floor(ageYears(r.startDate, date))
     const kwh = idx >= 0 && idx < sy.length ? sy[idx] : 0
-    if (kwh > 0) return kwh / DAYS_PER_YEAR
+    if (kwh > 0) return kwh / daysInYear(+date.slice(0, 4))
   }
   return r.simulatePerDay
 }

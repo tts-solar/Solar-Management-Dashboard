@@ -339,6 +339,21 @@ describe('supplier yearly simulate', () => {
     expect(withMetrics(day('2026-06-01', 80), r).simulate).toBeCloseTo(70) // project year 1 → 25550/365
     expect(withMetrics(day('2027-06-01', 80), r).simulate).toBeCloseTo(90) // year 2 blank → formula
   })
+  it('spreads a supplier year over its days, so a month plans for as many days as it holds', () => {
+    const jan = [day('2025-01-10', 80)]
+    const feb = [day('2025-02-10', 80)]
+    const r = resolve(plantOf([...jan, ...feb]), withDefaults({ kWp: 25, startDate: '2025-01-01', supplierYearly: [36500] }))
+    // calendar basis = every day of the month, at the year's flat 100/day: 31 days vs 28, not 1/12 each
+    expect(withMetrics(sumRows(jan), r, jan, true).simulate).toBeCloseTo(3100)
+    expect(withMetrics(sumRows(feb), r, feb, true).simulate).toBeCloseTo(2800)
+  })
+  it('divides a supplier year by that year own length, so a leap year is not handed a 366th day', () => {
+    // 2024 holds 366 days, so 36,600 kWh is 100/day — a flat ÷365 would plan 100.27 and overshoot the year
+    const feb = Array.from({ length: 29 }, (_, i) => day(`2024-02-${String(i + 1).padStart(2, '0')}`, 80))
+    const r = resolve(plantOf(feb), withDefaults({ kWp: 25, startDate: '2024-01-01', supplierYearly: [36600] }))
+    expect(withMetrics(day('2024-02-29', 80), r).simulate).toBeCloseTo(100)
+    expect(withMetrics(sumRows(feb), r, feb, true).simulate).toBeCloseTo(2900) // all 29 days of it
+  })
   it('period simulate sums the real days; omitting the day list falls back to the formula', () => {
     const daily = [day('2025-03-01', 80), day('2025-03-02', 80)]
     const r = resolve(plantOf(daily), withDefaults({ kWp: 25, startDate: '2025-01-01', supplierYearly: [36500] }))
