@@ -6,6 +6,29 @@ import { readOfflineHtmlB64 } from './tools/offline-embed.mjs'
 
 const OFFLINE_FILE = 'solar-dashboard-offline.html'
 
+/**
+ * The folders .gitignore keeps out of this public repo because they hold the homeowner's own files
+ * (plus Excel's ~$ lock files). The dev server has no reason to watch them — nothing here imports
+ * them — and watching them costs the whole server: a workbook open in Excel is locked, chokidar's
+ * watch() fails with EBUSY, and Vite exits, mid-session, for a file that is not even source.
+ */
+const LOCAL_ONLY = /^(ข้อมูล|data|design)\/|(^|\/)~\$/
+
+// Config-local declaration: the project pulls in no @types/node, and one cwd() is not worth them.
+declare const process: { cwd(): string }
+
+const slash = (p: string): string => p.replace(/\\/g, '/')
+
+/** True for a path under one of those folders. Paths arrive absolute, so the root is stripped first —
+ *  anchoring matters: `src/data/` is source and must keep its watcher. */
+const unwatched = (root: string) => {
+  const base = slash(root) + '/'
+  return (file: string): boolean => {
+    const p = slash(file)
+    return p.startsWith(base) && LOCAL_ONLY.test(p.slice(base.length))
+  }
+}
+
 // Offline build writes its single HTML under a distinct name so it can sit
 // beside the demo build's index.html in dist/.
 function renameOfflineHtml(): Plugin {
@@ -108,6 +131,7 @@ export default defineConfig(({ mode }) => {
     define: { __OFFLINE_HTML_B64__: JSON.stringify(readOfflineHtmlB64(offline)) },
     plugins: [viteSingleFile(), bundledDataGuard(offline, build), networkLockCsp(), ...(offline ? [renameOfflineHtml()] : [])],
     css: { postcss: { plugins: [cssSourceGuard(offline, build)] } },
+    server: { watch: { ignored: unwatched(process.cwd()) } },
     build: {
       target: 'es2020',
       assetsInlineLimit: 100000000,
