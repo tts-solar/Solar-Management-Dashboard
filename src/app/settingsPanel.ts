@@ -1,5 +1,21 @@
+import { csvToGrid } from '../data/csv'
 import { resolve } from '../data/metrics'
-import { DEFAULT_SETTINGS, GLOBAL_KEY, globalSettings, missingSettings, REQUIRED_FIELDS, withDefaults, type PlantSettings, type SettingsMap } from '../data/settings'
+import { isSupplierGrid, parseSupplierGrid } from '../data/supplierCsv'
+import { readXlsxGrid } from '../data/xlsx'
+import { downloadSupplierTemplate } from './templates'
+import {
+  DEFAULT_SETTINGS,
+  GLOBAL_KEY,
+  globalSettings,
+  missingSettings,
+  REQUIRED_FIELDS,
+  supplierKwh,
+  supplierYearsOf,
+  withDefaults,
+  type PlantSettings,
+  type SettingsMap,
+  type SupplierYear,
+} from '../data/settings'
 import type { Plant } from '../data/types'
 import { confirmDialog } from './confirm'
 
@@ -45,7 +61,7 @@ const FIELDS: Field[] = [
   { key: 'sunHours', label: 'ชั่วโมงแดดต่อวัน', kind: 'number', unit: 'ชม.', scope: 'plant', tip: 'ชั่วโมงที่แดดแรงเต็มที่เฉลี่ยต่อวันของพื้นที่ (Peak Sun Hours)' },
   // per-plant: money (each plant can differ; blank uses the built-in default)
   { key: 'investment', label: 'เงินลงทุน', kind: 'money', unit: '฿', scope: 'plant', tip: 'เงินที่ลงทุนติดตั้งระบบนี้ ใช้คำนวณระยะคืนทุน' },
-  { key: 'tariff', label: 'ค่าไฟ', kind: 'number', unit: '฿/kWh', scope: 'plant', tip: 'ราคาต่อหน่วยไฟ ใช้คำนวณมูลค่าที่ประหยัดและการคืนทุน' },
+  { key: 'tariff', label: 'ค่าไฟ', kind: 'number', unit: '฿/kWh', scope: 'plant', tip: 'ราคาต่อหน่วยไฟ ใช้คำนวณมูลค่าที่ประหยัดและการคืนทุน · เป็นราคาสำรอง — ปีไหนที่ตาราง ค่า Simulate กรอก Peak Rate / Off-Peak Rate ไว้ ปีนั้นจะใช้ราคาเฉลี่ยจากตารางแทน ค่านี้จะถูกใช้เฉพาะปีที่กรอกแต่ kWh หรือเว้นว่างทั้งแถว' },
   { key: 'paybackPlanYears', label: 'แผนคืนทุน', kind: 'number', unit: 'ปี', scope: 'plant', tip: 'จำนวนปีเป้าหมายที่ต้องการคืนทุน' },
   // per-plant: simulate comparison
   { key: 'peakTestFactor', label: 'Peak Test เทียบ Simulate', kind: 'percent', unit: '%', scope: 'plant', tip: '% ผลวัดจริงเทียบกับค่าที่จำลองไว้ ของ Plant นี้' },
@@ -112,13 +128,39 @@ function autoHint(f: Field, plant: Plant, raw: Partial<PlantSettings>, base: Pla
 let open: HTMLDialogElement | null = null
 
 /**
- * Sub-dialog to enter the supplier's projected yearly energy (kWh):
- *   • "จำนวนปี" + "สร้างตาราง" lays out that many blank year rows to fill,
- *   • the per-year table itself: type each value, or PASTE a whole column (whitespace/comma separated) into a cell.
- * "ใช้ค่านี้" hands back one number per project year (blank/invalid → 0 = "use the formula that year");
- * a trailing run of zeros is trimmed so the stored array is no longer than it needs to be.
+ * The four columns of the supplier's table, in the order their document prints them. `unit` rides in
+ * the column head rather than beside every cell: the head is sticky, so the unit stays on screen all
+ * the way down 25 rows, while a unit repeated in 100 cells would bury the figures it describes. The
+ * placeholder carries it too, so an empty cell says what it wants before anything is typed.
  */
-function openSupplierDialog(opts: { title: string; startYear: number; initial: number[]; onApply: (years: number[]) => void }): void {
+type SupplierCol = 'peakRate' | 'peakKwh' | 'offRate' | 'offKwh'
+const SUPPLIER_COLS: { key: SupplierCol; head: string; unit: string }[] = [
+  { key: 'peakRate', head: 'Peak Rate', unit: '฿/kWh' },
+  { key: 'peakKwh', head: 'Peak Energy', unit: 'kWh' },
+  { key: 'offRate', head: 'Off-Peak Rate', unit: '฿/kWh' },
+  { key: 'offKwh', head: 'Off-Peak Energy', unit: 'kWh' },
+]
+
+/**
+ * Sub-dialog for the supplier's projection: one row per project year, four columns per row — the same
+ * four their document prints. Every cell is a straight copy off the page and the dashboard does the
+ * adding up, because the step where a reader has to total two columns by hand is the step where one
+ * column gets entered and the other left behind.
+ *   • "จำนวนปี" + "สร้างตาราง" lays out that many blank year rows,
+ *   • pasting a whole column (whitespace/comma separated) into any cell fills THAT column downwards,
+ *   • a fifth, read-only column shows what the four come to — read it against the document's own "Total
+ *     Yearly Energy Saving" and a row typed into the wrong box shows up before the dialog closes.
+ * "ใช้ค่านี้" hands back one entry per project year; a blank year comes back as zeros, which metrics reads
+ * as "no supplier figure, use the formula", and a trailing run of blank years is trimmed.
+ */
+function openSupplierDialog(opts: {
+  title: string
+  /** plant name, for the downloaded file */
+  fileName: string
+  startYear: number
+  initial: SupplierYear[]
+  onApply: (years: SupplierYear[]) => void
+}): void {
   const dlg = document.createElement('dialog')
   dlg.className = 'settings supplier'
   const form = document.createElement('form')
@@ -128,7 +170,7 @@ function openSupplierDialog(opts: { title: string; startYear: number; initial: n
   const note = document.createElement('p')
   note.className = 'note'
   note.textContent =
-    'พลังงานที่ผู้ขายคาดว่าจะผลิตได้ต่อปี (kWh) — เส้น Simulate จะใช้ค่านี้ (หารด้วยจำนวนวันของปีนั้นเป็นค่ารายวัน เดือนไหนมีกี่วันก็คูณเท่านั้น) แทนสูตร · ปีไหนเว้นว่าง = ใช้สูตรเดิม · วางทั้งคอลัมน์จากเอกสารลงช่องแรกได้'
+    'ตารางของผู้ขาย — ลอกสี่คอลัมน์ลงมาตรงๆ ไม่ต้องบวกเอง · แอปจะรวม kWh สองช่วงเป็นเป้าของเส้น Simulate และคิดราคาเฉลี่ยจากอัตราทั้งสองให้เอง · ช่องขวาสุดคือผลที่แอปคำนวณได้ เอาไปเทียบกับคอลัมน์ Total Yearly Energy Saving ในเอกสาร ถ้าตรงแปลว่ากรอกถูกช่อง · เว้นว่างทั้งแถว = ปีนั้นใช้สูตรเดิม · วางทั้งคอลัมน์จากเอกสารลงช่องแรกของคอลัมน์นั้นได้'
 
   const numInput = (ph: string, value = ''): HTMLInputElement => {
     const i = document.createElement('input')
@@ -138,14 +180,16 @@ function openSupplierDialog(opts: { title: string; startYear: number; initial: n
     i.value = value
     return i
   }
+  const span = (cls: string, text: string): HTMLElement =>
+    Object.assign(document.createElement('span'), { className: cls, textContent: text })
   const wrap = (label: string, el: HTMLElement): HTMLElement => {
     const l = document.createElement('label')
     l.className = 'supplier-field'
-    l.append(Object.assign(document.createElement('span'), { textContent: label }), el)
+    l.append(span('', label), el)
     return l
   }
 
-  // ── row builder: pick how many years, then type each value in by hand ──
+  // ── row builder: pick how many years, then fill the table in ──
   const count = numInput('ปี', String(Math.max(opts.initial.length, 25)))
   const genBtn = Object.assign(document.createElement('button'), { type: 'button', className: 'pill', textContent: 'สร้างตาราง' })
   const gen = document.createElement('div')
@@ -155,40 +199,170 @@ function openSupplierDialog(opts: { title: string; startYear: number; initial: n
   // ── per-year table ──
   const table = document.createElement('div')
   table.className = 'supplier-table'
-  const inputs: HTMLInputElement[] = []
-  const buildTable = (n: number, values: number[]): void => {
-    table.replaceChildren()
-    inputs.length = 0
+  const head = document.createElement('div')
+  head.className = 'supplier-head'
+  const headCell = (name: string, unit: string): HTMLElement => {
+    const cell = document.createElement('span')
+    cell.append(span('sy-h-name', name))
+    if (unit) cell.append(span('sy-h-unit', unit))
+    return cell
+  }
+  head.append(
+    headCell('ปี', ''),
+    ...SUPPLIER_COLS.map((col) => headCell(col.head, col.unit)),
+    headCell('แอปคำนวณได้', 'kWh · ฿'),
+  )
+
+  const rows: { inputs: Record<SupplierCol, HTMLInputElement>; out: HTMLElement }[] = []
+  const num = (i: HTMLInputElement): number => {
+    const n = Number(i.value.replace(/,/g, '').trim())
+    return Number.isFinite(n) && n > 0 ? n : 0
+  }
+  /**
+   * Thousand separators while the figure is being typed. These run to six digits, where 100182 and
+   * 10182 look alike at a glance; grouped, a dropped digit shows up in the cell it was typed into
+   * rather than in the totals a page later. Only the part before the dot is grouped and the rest is
+   * left exactly as typed, so "4." on the way to "4.313" survives; num() strips the commas again.
+   */
+  const grouped = (raw: string): string => {
+    const cleaned = raw.replace(/[^\d.]/g, '')
+    const dot = cleaned.indexOf('.')
+    const int = dot < 0 ? cleaned : cleaned.slice(0, dot)
+    const frac = dot < 0 ? '' : '.' + cleaned.slice(dot + 1).replace(/\./g, '')
+    return int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + frac
+  }
+  /** Re-group what is in the box, leaving the caret beside the same digit it was next to. */
+  const regroup = (i: HTMLInputElement): void => {
+    const next = grouped(i.value)
+    if (next === i.value) return
+    const before = i.value.slice(0, i.selectionStart ?? i.value.length).replace(/[^\d.]/g, '').length
+    i.value = next
+    if (document.activeElement !== i) return
+    let seen = 0
+    let pos = 0
+    while (pos < next.length && seen < before) {
+      if (next[pos] !== ',') seen++
+      pos++
+    }
+    i.setSelectionRange(pos, pos)
+  }
+  const valueOf = (r: (typeof rows)[number]): SupplierYear => ({
+    peakRate: num(r.inputs.peakRate),
+    peakKwh: num(r.inputs.peakKwh),
+    offRate: num(r.inputs.offRate),
+    offKwh: num(r.inputs.offKwh),
+  })
+  const fmt = (n: number): string => Math.round(n).toLocaleString('en-US')
+  /** The check column: what the two periods add up to, and what they are worth at the two prices. */
+  const refresh = (): void => {
+    for (const r of rows) {
+      const v = valueOf(r)
+      const kwh = v.peakKwh + v.offKwh
+      const thb = v.peakRate * v.peakKwh + v.offRate * v.offKwh
+      r.out.textContent = kwh > 0 ? `${fmt(kwh)} kWh${thb > 0 ? ` · ${fmt(thb)} ฿` : ''}` : ''
+    }
+  }
+
+  const buildTable = (n: number, values: SupplierYear[]): void => {
+    table.replaceChildren(head)
+    rows.length = 0
     for (let k = 0; k < n; k++) {
       const row = document.createElement('div')
       row.className = 'supplier-year'
-      const lab = Object.assign(document.createElement('span'), { textContent: `ปีที่ ${k + 1} · ${opts.startYear + k}` })
-      const inp = numInput('kWh')
-      const v = values[k]
-      inp.value = v && v > 0 ? String(v) : ''
-      inp.addEventListener('paste', (e) => {
-        const text = e.clipboardData?.getData('text') ?? ''
-        const parts = text.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
-        if (parts.length <= 1) return // a single value → let the browser paste it normally
-        e.preventDefault()
-        parts.forEach((p, j) => {
-          const idx = k + j
-          if (idx < inputs.length) {
-            const num = Number(p.replace(/,/g, ''))
-            inputs[idx].value = Number.isFinite(num) && num > 0 ? String(num) : ''
-          }
+      row.append(span('sy-year', `ปีที่ ${k + 1} · ${opts.startYear + k}`))
+      const inputs = {} as Record<SupplierCol, HTMLInputElement>
+      for (const col of SUPPLIER_COLS) {
+        const inp = numInput(col.unit)
+        const v = values[k]?.[col.key]
+        inp.value = v && v > 0 ? grouped(String(v)) : ''
+        inp.addEventListener('input', () => {
+          regroup(inp)
+          refresh()
         })
-      })
-      row.append(lab, inp)
+        inp.addEventListener('paste', (e) => {
+          const text = e.clipboardData?.getData('text') ?? ''
+          // A column off a sheet arrives one value per line or per tab. A comma inside it is a
+          // thousand separator, so it must never split one figure into two rows.
+          const lines = text.split(/[\r\n\t]+/).map((t) => t.trim()).filter(Boolean)
+          const parts = lines.length > 1 ? lines : text.trim().split(/\s+/).filter(Boolean)
+          if (parts.length <= 1) return // a single value → the browser pastes it, then 'input' groups it
+          e.preventDefault()
+          parts.forEach((part, j) => {
+            const target = rows[k + j]
+            if (!target) return
+            const parsed = Number(part.replace(/,/g, ''))
+            target.inputs[col.key].value = Number.isFinite(parsed) && parsed > 0 ? grouped(String(parsed)) : ''
+          })
+          refresh()
+        })
+        inputs[col.key] = inp
+        row.append(inp)
+      }
+      const out = span('sy-out', '')
+      row.append(out)
       table.append(row)
-      inputs.push(inp)
+      rows.push({ inputs, out })
     }
+    refresh()
   }
   buildTable(Math.max(opts.initial.length, 25), opts.initial)
 
+  // ── file in / file out (top right, beside the row builder) ──
+  // Download writes the table as it stands — as many rows as are on screen, carrying whatever is typed
+  // in — so one button serves as both the blank form and a backup to edit in Excel. Import fills the
+  // table but does NOT save: the green check column is there to be read against the document first,
+  // and "ใช้ค่านี้" still has the last word.
+  const msg = document.createElement('p')
+  msg.className = 'supplier-msg'
+  msg.hidden = true
+  const say = (text: string, bad: boolean): void => {
+    msg.textContent = text
+    msg.classList.toggle('bad', bad)
+    msg.hidden = false
+  }
+  const file = document.createElement('input')
+  file.type = 'file'
+  file.accept = '.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  file.hidden = true
+  const tools = document.createElement('div')
+  tools.className = 'supplier-tools'
+  const toolBtn = (text: string, onClick: () => void): HTMLButtonElement => {
+    const b = Object.assign(document.createElement('button'), { type: 'button', className: 'pill', textContent: text })
+    b.addEventListener('click', onClick)
+    tools.append(b)
+    return b
+  }
+  toolBtn('ดาวน์โหลดเทมเพลต (Excel)', () =>
+    downloadSupplierTemplate(opts.fileName, opts.startYear, rows.map(valueOf), rows.length),
+  )
+  toolBtn('นำเข้าไฟล์', () => file.click())
+  tools.append(file)
+  gen.append(tools)
+
+  file.addEventListener('change', () => {
+    const picked = file.files?.[0]
+    file.value = '' // allow re-picking the same file
+    if (!picked) return
+    void (async () => {
+      try {
+        const grid = /\.xlsx$/i.test(picked.name) ? await readXlsxGrid(await picked.arrayBuffer()) : csvToGrid(await picked.text())
+        if (!isSupplierGrid(grid)) {
+          say('ไฟล์นี้ไม่ใช่ตารางค่า Simulate — ต้องมีหัวคอลัมน์ "ปี" และคอลัมน์ Peak / Off-Peak Energy · กด "ดาวน์โหลดเทมเพลต" เพื่อดูรูปแบบที่ถูกต้อง', true)
+          return
+        }
+        const parsed = parseSupplierGrid(grid, opts.startYear)
+        buildTable(Math.max(parsed.years.length, rows.length), parsed.years)
+        const skipped = parsed.skipped ? ` · ข้าม ${parsed.skipped} แถวที่ปีอยู่นอกช่วงของตาราง` : ''
+        say(`อ่านได้ ${parsed.filled} ปี${skipped} · ตรวจช่องขวาสุดให้ตรงกับเอกสาร แล้วกด "ใช้ค่านี้"`, false)
+      } catch (err) {
+        say(err instanceof Error ? err.message : 'อ่านไฟล์ไม่สำเร็จ', true)
+      }
+    })()
+  })
+
   genBtn.addEventListener('click', () => {
     const n = Math.max(1, Math.min(60, Math.round(Number(count.value.trim()) || 25)))
-    buildTable(n, []) // blank rows — the user types each year's value (or pastes a whole column)
+    buildTable(n, []) // blank rows — fill them in by hand, or paste a column at a time
   })
 
   // ── actions ──
@@ -203,17 +377,17 @@ function openSupplierDialog(opts: { title: string; startYear: number; initial: n
     b.addEventListener('click', onClick)
     actions.append(b)
   }
-  mkBtn('ล้างทั้งหมด', 'ghost', () => inputs.forEach((i) => (i.value = '')))
+  mkBtn('ล้างทั้งหมด', 'ghost', () => {
+    for (const r of rows) for (const col of SUPPLIER_COLS) r.inputs[col.key].value = ''
+    refresh()
+  })
   mkBtn('ยกเลิก', 'ghost', () => close())
   mkBtn(
     'ใช้ค่านี้',
     'primary',
     () => {
-      const years = inputs.map((i) => {
-        const n = Number(i.value.replace(/,/g, '').trim())
-        return Number.isFinite(n) && n > 0 ? n : 0
-      })
-      while (years.length && years[years.length - 1] === 0) years.pop()
+      const years = rows.map(valueOf)
+      while (years.length && years[years.length - 1].peakKwh <= 0 && years[years.length - 1].offKwh <= 0) years.pop()
       opts.onApply(years)
       close()
     },
@@ -221,7 +395,7 @@ function openSupplierDialog(opts: { title: string; startYear: number; initial: n
   )
 
   dlg.addEventListener('close', () => dlg.remove())
-  form.append(h, note, gen, table, actions)
+  form.append(h, note, gen, msg, table, actions)
   dlg.append(form)
   document.body.append(dlg)
   dlg.showModal()
@@ -616,15 +790,18 @@ export function openSettings(o: SettingsPanelOpts): void {
   peakRow.append(peakSpan, peakOut, Object.assign(document.createElement('small'), { textContent: 'kWh' }))
   pGrid.append(peakRow)
 
-  // Supplier Simulate — optional per-plant yearly kWh from the supplier's document. The button opens a
+  // Supplier Simulate — the supplier's projection for this plant, four columns per project year. The
+  // button opens a
   // sub-dialog (generator + editable/pasteable table); the value is stashed per plant and merged on save.
-  const supplierDrafts = new Map<string, number[]>()
+  const supplierDrafts = new Map<string, SupplierYear[]>()
   const supplierRow = document.createElement('div')
   supplierRow.className = 'row supplier-link'
   const supplierSpan = document.createElement('span')
   supplierSpan.append(
     document.createTextNode('ค่า Simulate '),
-    helpBtn('ใส่พลังงานรายปี (kWh) ที่ผู้ขายคาดการณ์ไว้ — เส้น Simulate จะใช้ค่านี้ (หารด้วยจำนวนวันของปีนั้นเป็นค่ารายวัน เดือนไหนมีกี่วันก็คูณเท่านั้น) แทนสูตร; ปีที่เว้นว่างกลับไปใช้สูตร'),
+    helpBtn(
+      'ลอกตารางของผู้ขายมาทั้ง 4 คอลัมน์ (Peak Rate / Peak kWh / Off-Peak Rate / Off-Peak kWh) — แอปรวม kWh สองช่วงเป็นเป้าของเส้น Simulate และคิดราคาต่อหน่วยจากอัตราทั้งสองเอง แทนค่าไฟที่ตั้งไว้; กรอกแต่ kWh ก็ได้ ค่าไฟจะใช้ที่ตั้งไว้เหมือนเดิม; ปีที่เว้นว่างกลับไปใช้สูตร',
+    ),
   )
   const supplierStatus = Object.assign(document.createElement('small'), { className: 'supplier-status' })
   // status rides in the label column so the grey box can sit in grid col-2 (aligned with the inputs above)
@@ -673,7 +850,7 @@ export function openSettings(o: SettingsPanelOpts): void {
 
   // Supplier Simulate wiring (needs plantOf/plantDirty above). The array lives in supplierDrafts once
   // edited, otherwise falls back to the plant's stored value; updateSupplierStatus reflects it on screen.
-  const currentSupplier = (): number[] => supplierDrafts.get(plantOf().id) ?? o.settings[plantOf().id]?.supplierYearly ?? []
+  const currentSupplier = (): SupplierYear[] => supplierDrafts.get(plantOf().id) ?? supplierYearsOf(o.settings[plantOf().id])
   // project year 1 = commissioning year (startDate), falling back to the first data year, then this year —
   // so the per-year table and the "this year" peek below both index off the same starting year
   const simStartYear = (): number => {
@@ -693,10 +870,10 @@ export function openSettings(o: SettingsPanelOpts): void {
   }
   const updateSupplierStatus = (): void => {
     const arr = currentSupplier()
-    const filled = arr.filter((n) => n > 0).length
+    const filled = arr.filter((y) => supplierKwh(y) > 0).length
     const curYear = new Date().getFullYear()
-    const v = arr[curYear - simStartYear()]
-    supplierCurrent.value = v && v > 0 ? `${Math.round(v).toLocaleString('en-US')} kWh` : ''
+    const v = supplierKwh(arr[curYear - simStartYear()])
+    supplierCurrent.value = v > 0 ? `${Math.round(v).toLocaleString('en-US')} kWh` : ''
     supplierCurrent.placeholder = `ปี ${curYear}`
     supplierCurrent.title = `ค่า Simulate ปี ${curYear}`
     supplierStatus.textContent = filled ? `ตั้งแล้ว ${filled} ปี` : 'ยังไม่ได้ตั้ง — ใช้สูตร'
@@ -705,6 +882,7 @@ export function openSettings(o: SettingsPanelOpts): void {
     const plant = plantOf()
     openSupplierDialog({
       title: `ค่า Simulate — ${o.displayName(plant)}`,
+      fileName: o.displayName(plant),
       startYear: simStartYear(),
       initial: currentSupplier(),
       onApply: (years) => {
@@ -778,8 +956,8 @@ export function openSettings(o: SettingsPanelOpts): void {
     addH2('plant', v)
     // onSave REPLACES each edited plant's settings, so carry the supplier array through (the edited draft,
     // or whatever was stored) — otherwise editing any field would wipe this plant's supplier Simulate.
-    const sy = supplierDrafts.get(loadedId) ?? o.settings[loadedId]?.supplierYearly
-    if (sy && sy.some((n) => n > 0)) v.supplierYearly = sy.map((n) => (n > 0 ? n : 0))
+    const sy = supplierDrafts.get(loadedId) ?? supplierYearsOf(o.settings[loadedId])
+    if (sy.some((y) => supplierKwh(y) > 0)) v.supplierTou = sy
     // carry the per-year tariff overrides for the plant on screen (same reason as supplierYearly above)
     const ty = readYearly.get('plant')!()
     if (ty.some((e) => e.h1 > 0)) v.tariffYearly = ty

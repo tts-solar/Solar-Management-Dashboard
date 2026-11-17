@@ -13,8 +13,67 @@ export interface PlantSettings {
   investment: number | null // THB; null → sized so the plan pays back in paybackPlanYears
   paybackPlanYears: number
   reinvestAge: number // years — the dashed "Age of Plant" line in the efficiency/age chart (global only, not per-plant)
-  supplierYearly?: number[] // per-plant: supplier's projected yearly energy (kWh), index 0 = project year 1. Where a year has a value, Simulate uses it (÷ that year's own days for a daily rate, so a month plans for as many days as it holds) instead of the kWp×sunHours×PR formula; a 0/blank year falls back to the formula.
-  tariffYearly?: { h1: number; h2: number | null }[] // per-plant: electricity price per project year, index 0 = commissioning year (mirrors supplierYearly). h1 = months 1-6, h2 = months 7-12 (null → h1 all year). A year with h1<=0 → fall back to the base tariff/tariffH2.
+  supplierTou?: SupplierYear[] // per-plant: the supplier's projection, one entry per project year (index 0 = year 1). See SupplierYear.
+  supplierYearly?: number[] // LEGACY, read only: the kWh-per-year array this field used to be. supplierYearsOf() folds it into supplierTou, and nothing writes it any more.
+  tariffYearly?: { h1: number; h2: number | null }[] // per-plant: electricity price per project year, index 0 = commissioning year (mirrors supplierTou). h1 = months 1-6, h2 = months 7-12 (null → h1 all year). A year with h1<=0 → fall back to the base tariff/tariffH2.
+}
+
+/**
+ * One project year of the supplier's projection, in the four columns their document prints: the two
+ * time-of-use prices and the energy the array is expected to make under each. Every number is copied
+ * off the page as it stands, because the step where a reader has to total two columns by hand is the
+ * step where one column gets entered and the other left behind — which reads as a plant beating a
+ * target that is a third too low. The dashboard does the arithmetic instead:
+ *   energy for the year = peakKwh + offKwh      (what the Simulate line and Efficiency compare against)
+ *   money for the year  = peakRate×peakKwh + offRate×offKwh   (what break-even counts)
+ * Prices are optional: with the energy alone the plant's own tariff setting prices it, exactly as this
+ * field behaved when it held one kWh figure per year.
+ */
+export interface SupplierYear {
+  peakRate: number
+  peakKwh: number
+  offRate: number
+  offKwh: number
+}
+
+const atLeast0 = (v: unknown): number => (positive(v) ? (v as number) : 0)
+
+/**
+ * Whatever a stored plant holds, as the four-column shape — so nothing downstream has to know which
+ * version wrote the file. A plant saved before the prices existed carries `supplierYearly`, a plain kWh
+ * per year; it becomes that year's peak energy with no price, which is how it already behaved.
+ */
+export function supplierYearsOf(raw: Partial<PlantSettings> | undefined): SupplierYear[] {
+  if (Array.isArray(raw?.supplierTou))
+    return raw.supplierTou.map((y) => ({
+      peakRate: atLeast0(y?.peakRate),
+      peakKwh: atLeast0(y?.peakKwh),
+      offRate: atLeast0(y?.offRate),
+      offKwh: atLeast0(y?.offKwh),
+    }))
+  if (Array.isArray(raw?.supplierYearly))
+    return raw.supplierYearly.map((v) => ({ peakRate: 0, peakKwh: atLeast0(v), offRate: 0, offKwh: 0 }))
+  return []
+}
+
+/** Energy the supplier expects that year (both periods together); 0 = no figure, use the formula. */
+export const supplierKwh = (y: SupplierYear | undefined): number => (y ? y.peakKwh + y.offKwh : 0)
+
+/** What that year's energy is worth at the supplier's own two prices; null = the page gave no prices. */
+export const supplierSaving = (y: SupplierYear | undefined): number | null => {
+  if (!y) return null
+  const thb = y.peakRate * y.peakKwh + y.offRate * y.offKwh
+  return thb > 0 ? thb : null
+}
+
+/**
+ * The single price per kWh those two prices come to, weighted by how much energy lands in each period.
+ * null when the year has no prices — then the plant's tariff setting applies, as it always did.
+ */
+export const supplierRate = (y: SupplierYear | undefined): number | null => {
+  const thb = supplierSaving(y)
+  const kwh = supplierKwh(y)
+  return thb !== null && kwh > 0 ? thb / kwh : null
 }
 
 export const DEFAULT_SETTINGS: PlantSettings = {
@@ -59,6 +118,7 @@ const positive = (v: unknown): v is number => typeof v === 'number' && Number.is
  */
 export function withDefaults(raw: Partial<PlantSettings> = {}, base: PlantSettings = DEFAULT_SETTINGS): PlantSettings {
   const s: PlantSettings = { ...base }
+  delete s.supplierYearly // legacy input only; supplierTou below is the shape everything reads
   for (const k of NUMERIC) {
     const v = raw[k]
     if (positive(v)) s[k] = v
@@ -69,12 +129,12 @@ export function withDefaults(raw: Partial<PlantSettings> = {}, base: PlantSettin
   }
   if (typeof raw.name === 'string' && raw.name.trim()) s.name = raw.name.trim()
   if (typeof raw.startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.startDate)) s.startDate = raw.startDate
-  // Supplier yearly kWh: keep the array index-aligned to project years (a blank/invalid year → 0, which
-  // metrics reads as "no supplier figure, use the formula"). Never compact — that would shift the years.
-  if (Array.isArray(raw.supplierYearly)) {
-    const years = raw.supplierYearly.map((v) => (positive(v) ? v : 0))
-    if (years.some((n) => n > 0)) s.supplierYearly = years
-  }
+  // Supplier projection: keep the array index-aligned to project years (a blank/invalid year → zeros,
+  // which metrics reads as "no supplier figure, use the formula"). Never compact — that would shift the
+  // years. A legacy kWh-only array is folded in here, so an old file upgrades on load and is written back
+  // in the new shape without the user touching anything.
+  const supplier = supplierYearsOf(raw)
+  if (supplier.some((y) => supplierKwh(y) > 0)) s.supplierTou = supplier
   // Per-year tariff: keep index-aligned to project years like supplierYearly (never compact). Each entry
   // is { h1, h2 }; a non-positive h1 means "use the base tariff for that year", h2 null means "h1 all year".
   // Trim trailing use-base entries and keep the array only if at least one year has a real h1.

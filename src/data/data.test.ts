@@ -322,14 +322,32 @@ describe('settings', () => {
 })
 
 describe('supplier yearly simulate', () => {
-  // supplierYearly[0]=36500 kWh → 100/day; [1]=25550 → 70/day. Formula for kWp 25 = 25×4.5×0.8 = 90/day.
-  it('withDefaults keeps supplierYearly and zeroes blank/invalid years (positions preserved)', () => {
+  // supplierYearly/supplierTou year 0 = 36500 kWh → 100/day; year 1 = 25550 → 70/day. Formula for kWp 25 = 90/day.
+  const sup = (peakKwh: number, peakRate = 0, offKwh = 0, offRate = 0) => ({ peakRate, peakKwh, offRate, offKwh })
+  it('withDefaults folds a legacy kWh-per-year array into the four-column shape', () => {
+    // files written before the prices existed hold plain kWh; they become that year's peak energy with
+    // no price, which is how they already behaved — the energy from the document, the money from the tariff
     const s = withDefaults({ supplierYearly: [36500, 0, -5, 35000] } as Partial<PlantSettings>)
-    expect(s.supplierYearly).toEqual([36500, 0, 0, 35000])
+    expect(s.supplierTou).toEqual([sup(36500), sup(0), sup(0), sup(35000)]) // positions preserved
+    expect(s.supplierYearly).toBeUndefined() // nothing writes the old shape back
   })
-  it('withDefaults drops supplierYearly when no year has a value', () => {
-    const s = withDefaults({ supplierYearly: [0, 0] } as Partial<PlantSettings>)
-    expect(s.supplierYearly).toBeUndefined()
+  it('withDefaults drops the supplier table when no year has energy', () => {
+    expect(withDefaults({ supplierYearly: [0, 0] } as Partial<PlantSettings>).supplierTou).toBeUndefined()
+    expect(withDefaults({ supplierTou: [sup(0, 4.3), sup(0)] } as Partial<PlantSettings>).supplierTou).toBeUndefined()
+  })
+  it('adds the two periods up for the energy, and prices them at the supplier own two rates', () => {
+    // year 1 of a real supplier sheet: 4.313 × 17,248 peak + 2.622 × 7,934 off-peak
+    const row = { peakRate: 4.313, peakKwh: 17248, offRate: 2.622, offKwh: 7934 }
+    const plant = plantOf([day('2025-06-15', 80)])
+    // tariff 9 is deliberately absurd: a year the supplier priced must not feel the plant's own tariff
+    const r = resolve(plant, withDefaults({ kWp: 25, tariff: 9, startDate: '2025-01-01', investment: 1, supplierTou: [row] }))
+    expect(withMetrics(day('2025-06-15', 80), r).simulate).toBeCloseTo((17248 + 7934) / 365, 5)
+    expect(bep(plant, r).years[0].simulate).toBeCloseTo(4.313 * 17248 + 2.622 * 7934, 0)
+  })
+  it('falls back to the plant tariff for a year the supplier priced no energy in', () => {
+    const plant = plantOf([day('2025-06-15', 80)])
+    const r = resolve(plant, withDefaults({ kWp: 25, tariff: 4, startDate: '2025-01-01', investment: 1, supplierTou: [sup(25182)] }))
+    expect(bep(plant, r).years[0].simulate).toBeCloseTo(25182 * 4, 0) // energy from the document, price from settings
   })
   it('daily simulate uses the supplier year rate, and the formula where a year is blank', () => {
     const plant = plantOf([day('2025-06-01', 80)])

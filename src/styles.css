@@ -1440,6 +1440,22 @@ dialog.settings.supplier .supplier-gen {
   align-items: flex-end;
   margin: 10px 0;
 }
+/* file in / file out, pushed to the right-hand end of the row builder */
+dialog.settings.supplier .supplier-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+/* what the last import did — or why it did nothing */
+dialog.settings.supplier .supplier-msg {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--green);
+}
+dialog.settings.supplier .supplier-msg.bad {
+  color: var(--bad);
+}
 dialog.settings.supplier .supplier-field {
   display: flex;
   flex-direction: column;
@@ -1450,29 +1466,90 @@ dialog.settings.supplier .supplier-field {
 dialog.settings.supplier .supplier-field input {
   width: 110px;
 }
+/* The supplier's table: one row per project year, six columns wide — the year, their four, and what
+   the four come to. Head and body share one grid template so the columns line up, and the box scrolls
+   BOTH ways: six columns do not fit a phone, and squeezing them to fit would leave every figure
+   unreadable, which defeats a table whose whole job is being checked against a piece of paper. */
+dialog.settings.supplier {
+  width: min(1020px, calc(100vw - 32px));
+}
 dialog.settings.supplier .supplier-table {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 6px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   max-height: 46vh;
-  overflow-y: auto;
+  overflow: auto;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
 }
+dialog.settings.supplier .supplier-head,
 dialog.settings.supplier .supplier-year {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 92px repeat(4, minmax(76px, 1fr)) minmax(180px, 1.5fr);
   gap: 6px;
+  align-items: center;
+  min-width: 650px;
 }
-dialog.settings.supplier .supplier-year span {
-  flex: 0 0 72px;
+dialog.settings.supplier .supplier-head {
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+  padding-bottom: 4px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+dialog.settings.supplier .supplier-head span {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gray);
+  text-align: center;
+}
+/* ">" so this only moves the year column itself, not the name inside every two-line head cell */
+dialog.settings.supplier .supplier-head > span:first-child,
+dialog.settings.supplier .supplier-year .sy-year {
+  text-align: left;
+}
+/* name over unit: the unit is what the cell wants, so it stays visible while the head is stuck */
+dialog.settings.supplier .supplier-head .sy-h-name,
+dialog.settings.supplier .supplier-head .sy-h-unit {
+  display: block;
+  line-height: 1.3;
+}
+dialog.settings.supplier .supplier-head .sy-h-unit {
+  font-weight: 500;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  opacity: 0.8;
+}
+dialog.settings.supplier .supplier-year .sy-year {
   font-size: 11px;
   color: var(--gray);
 }
 dialog.settings.supplier .supplier-year input {
-  flex: 1;
   min-width: 0;
+  text-align: right;
+}
+/* The check column, boxed like the inputs it sums so the row reads as one line of figures — read it
+   against the supplier's own "Total Yearly Energy Saving". An empty year keeps the column's width
+   but drops the box, so a blank row stays blank. */
+dialog.settings.supplier .supplier-year .sy-out {
+  display: block;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--green);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(23, 89, 74, 0.07);
+  border: 1px solid var(--green);
+  border-radius: 6px;
+}
+dialog.settings.supplier .supplier-year .sy-out:empty {
+  background: none;
+  border-color: transparent;
 }
 
 /* read-only auto field (Peak Test ต่อวัน) */

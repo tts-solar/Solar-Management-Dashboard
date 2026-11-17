@@ -1,6 +1,14 @@
 import type { DailyRow, PeriodRow, Plant } from './types'
 import { dateFromNumber, daysInMonth, daysInYear, dayNumber, DAYS_PER_CALENDAR_YEAR, DAYS_PER_YEAR, pad, yearOf } from './aggregate'
-import { avgTariff, PEAK_TO_KWP, tariffForDate, type PlantSettings } from './settings'
+import {
+  avgTariff,
+  PEAK_TO_KWP,
+  supplierKwh,
+  supplierRate,
+  tariffForDate,
+  type PlantSettings,
+  type SupplierYear,
+} from './settings'
 
 /** Settings with every "auto" value worked out for one plant. */
 export interface Resolved extends PlantSettings {
@@ -88,13 +96,29 @@ export function resolve(plant: Plant, s: PlantSettings): Resolved {
  * with no supplier data at all. Project year is 0-based: the first year after commissioning is index 0.
  */
 export function simulatePerDayOn(r: Resolved, date: string): number {
-  const sy = r.supplierYearly
-  if (sy && sy.length) {
-    const idx = Math.floor(ageYears(r.startDate, date))
-    const kwh = idx >= 0 && idx < sy.length ? sy[idx] : 0
-    if (kwh > 0) return kwh / daysInYear(+date.slice(0, 4))
-  }
+  const kwh = supplierKwh(supplierYearAt(r, date))
+  if (kwh > 0) return kwh / daysInYear(+date.slice(0, 4))
   return r.simulatePerDay
+}
+
+/**
+ * The supplier's entry covering a date, or undefined where their document gave none. Project year is
+ * 0-based and counted from the commissioning date, so year 1 of the document is the plant's first year
+ * running — not the calendar year it happened to start in.
+ */
+function supplierYearAt(r: Resolved, date: string): SupplierYear | undefined {
+  return r.supplierTou?.[Math.floor(ageYears(r.startDate, date))]
+}
+
+/**
+ * What one kWh is worth on a date. The supplier's own two prices win for the years their document gave
+ * them, blended by how much energy they put in each period: a figure taken off their page should be
+ * priced by their page, not by whatever single tariff this plant happens to be configured with — the
+ * two differ by about 19% here, all of it landing on the break-even date. A year they priced is
+ * therefore self-contained; any other year falls through to the plant's tariff, exactly as before.
+ */
+function tariffOn(r: Resolved, date: string, startYear: number): number {
+  return supplierRate(supplierYearAt(r, date)) ?? tariffForDate(r, date, startYear)
 }
 
 /**
@@ -104,7 +128,7 @@ export function simulatePerDayOn(r: Resolved, date: string): number {
  * the formula rather than guess the span.
  */
 function supplierSimulate(row: DailyRow | PeriodRow, r: Resolved, rows?: readonly DailyRow[]): number | null {
-  if (!r.supplierYearly?.some((v) => v > 0)) return null
+  if (!r.supplierTou?.some((y) => supplierKwh(y) > 0)) return null
   if (!('days' in row)) return simulatePerDayOn(r, row.date)
   if (!rows) return null
   return rows.reduce((s, d) => s + simulatePerDayOn(r, d.date), 0)
@@ -255,7 +279,7 @@ export function bep(plant: Plant, r: Resolved, asOf?: string): BepResult {
     }
     const p = actual.get(date)
     if (p === undefined) projected = true
-    const tariff = tariffForDate(r, date, startYear)
+    const tariff = tariffOn(r, date, startYear)
     savings += (p ?? avg) * tariff
     simulate += simulatePerDayOn(r, date) * tariff
     // investment 0 means "unknown" (no data to size it) — never report an instant payback
