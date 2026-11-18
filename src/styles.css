@@ -635,6 +635,22 @@ dialog.settings .row.pulse {
   border-top: 2px solid var(--ink);
 }
 
+/* a panel heading that carries something on its right (the scatter's average key) */
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+/* the key is one chip, sized to its text, not the centered row that sits under a chart. margin-left
+   keeps it hard right even on a narrow panel, where it wraps onto a line of its own under the title */
+.panel-head .chart-legend.avg-key {
+  flex: 0 1 auto;
+  margin-left: auto;
+  margin-bottom: 8px;
+}
+
 .panel-title {
   margin: 0 0 8px;
   font-size: clamp(1rem, 1.6vw, 1.35rem);

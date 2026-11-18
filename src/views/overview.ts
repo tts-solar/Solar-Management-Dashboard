@@ -58,7 +58,7 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string, rang
       <div class="rule"></div>
       <section class="cell left">
         <h2 class="panel-title">Efficiency and Age Relationship</h2>
-        <div class="chart-box" data-chart="bubble"><div class="chart-note">● : Plants<br>Size : Capacity</div></div>
+        <div class="chart-box" data-chart="bubble"></div>
       </section>
       <section class="cell right">
         <h2 class="panel-title">Project Plants <small>(Sort by Production Rate)</small></h2>

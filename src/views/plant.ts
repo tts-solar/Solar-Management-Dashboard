@@ -5,7 +5,7 @@ import { settingsFor } from '../data/settings'
 import type { Plant } from '../data/types'
 import { C, MONTHS, axisTitle, chartLegend, energy, energyIn, energyScale, kpiCard, mountChart, pct } from '../charts/common'
 import { bepChart, bepLegend } from '../charts/bep'
-import { scatterChart } from '../charts/scatter'
+import { scatterAverageKey, scatterChart, scatterLegend } from '../charts/scatter'
 import { dataTable } from './table'
 import { openAdvisorDialog } from '../app/advisorDialog'
 import type { DateRange, ViewCtx } from './overview'
@@ -64,7 +64,7 @@ export function renderPlant(
     </div>
     <div class="page bottom">
       <section class="cell left">
-        <h2 class="panel-title">Efficiency and Consumption</h2>
+        <div class="panel-head"><h2 class="panel-title">Efficiency and Consumption</h2></div>
         <div class="chart-col"><div class="chart-box" data-chart="scatter"></div></div>
       </section>
       <section class="cell right">
@@ -147,19 +147,14 @@ export function renderPlant(
 
   // ── efficiency vs consumption ──
   const zoneText = perDay ? 'วันที่อาจทำงานผิดปกติ' : 'เดือนที่อาจทำงานผิดปกติ'
-  scatterChart(
-    box('scatter'),
-    rows
-      .filter((x) => x.m.efficiency !== null)
-      .map((x) => ({ key: x.key, label: x.label, consumed: x.m.consumed, efficiency: x.m.efficiency!, abnormal: x.m.abnormal })),
-    { abnormalBelow: r.abnormalBelow, onClick: drill },
-  )
-  box('scatter').after(
-    chartLegend([
-      { label: zoneText, color: C.bad },
-      { label: 'ปกติ', color: '#4d4d4d' },
-    ]),
-  )
+  const scatterPoints = rows
+    .filter((x) => x.m.efficiency !== null)
+    .map((x) => ({ key: x.key, label: x.label, consumed: x.m.consumed, efficiency: x.m.efficiency!, abnormal: x.m.abnormal }))
+  scatterChart(box('scatter'), scatterPoints, { abnormalBelow: r.abnormalBelow, onClick: drill })
+  // straight into .panel-head, with no wrapper: the key has to BE the flex item for its margin-left
+  // auto to push it to the right edge of the heading
+  box('scatter').closest('section')!.querySelector('.panel-head')!.append(scatterAverageKey(scatterPoints))
+  box('scatter').after(scatterLegend(zoneText))
 
   // ── tabs: BEP | Data table ──
   const panel = el.querySelector<HTMLElement>('[data-panel]')!
