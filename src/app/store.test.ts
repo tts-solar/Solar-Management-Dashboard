@@ -75,3 +75,29 @@ describe('applyMerge — keep existing days, append only new dates', () => {
     expect(list.map((p) => p.id)).toEqual(['KK', 'MH'])
   })
 })
+
+describe('applyMerge with overwrite — a re-issued file corrects what is already there', () => {
+  it('lets the incoming row win on a clash and counts it as replaced', () => {
+    const list: Plant[] = [plant('MH', ['2026-01-01', '2026-01-02'], 111)]
+    const info = applyMerge(list, plant('MH', ['2026-01-02', '2026-01-03'], 999), true)
+
+    expect(info).toMatchObject({ action: 'merged', incomingDays: 2, added: 1, replaced: 1, kept: 1, total: 3 })
+    expect(list[0].daily.find((d) => d.date === '2026-01-01')!.produced).toBe(111) // untouched
+    expect(list[0].daily.find((d) => d.date === '2026-01-02')!.produced).toBe(999) // corrected
+    expect(list[0].daily.find((d) => d.date === '2026-01-03')!.produced).toBe(999) // new
+  })
+
+  it('reports replaced 0 and keeps every existing row when overwrite is off', () => {
+    const existing = plant('MH', ['2026-01-01', '2026-01-02'])
+    const info = mergeInfo(existing, plant('MH', ['2026-01-02', '2026-01-03']), false)
+    expect(info).toMatchObject({ added: 1, replaced: 0, kept: 2, total: 3 })
+  })
+
+  it('leaves the result sorted and the row count right when the file overlaps completely', () => {
+    const list: Plant[] = [plant('MH', ['2026-01-01', '2026-01-02'], 1)]
+    const info = applyMerge(list, plant('MH', ['2026-01-01', '2026-01-02'], 7), true)
+    expect(info).toMatchObject({ added: 0, replaced: 2, kept: 0, total: 2 })
+    expect(list[0].daily.map((d) => d.produced)).toEqual([7, 7])
+    expect(dates(list[0])).toEqual(['2026-01-01', '2026-01-02'])
+  })
+})

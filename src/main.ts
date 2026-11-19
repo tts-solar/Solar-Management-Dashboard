@@ -170,22 +170,29 @@ function openImport(files?: File[]): void {
   openImportDialog({
     initialFiles: files,
     read: readPlantFiles,
-    previewMerge: (plant) => mergeInfo(plants.find((p) => p.id === plant.id), plant),
-    onConfirm: (ok) => commitImport(ok),
+    previewMerge: (plant, overwrite) => mergeInfo(plants.find((p) => p.id === plant.id), plant, overwrite),
+    onConfirm: (ok, overwrite) => commitImport(ok, overwrite),
   })
 }
 
-// apply a confirmed import: merge each plant in, remember, and open the newly imported data
-function commitImport(ok: Imported[]): void {
-  for (const { plant, skipped, granularity } of ok) {
+// apply a confirmed import: merge each plant in, remember, and open the newly imported data.
+// `overwrite` is the preview's own checkbox: without it the file's rows lose to the dates already
+// on the dashboard, which is what makes a re-import of a corrected file do nothing.
+function commitImport(ok: Imported[], overwrite: boolean): void {
+  for (const { plant, skipped, blank, granularity } of ok) {
     const unit = granularity === 'month' ? 'เดือน' : 'วัน'
-    const info = applyMerge(plants, plant)
-    const skip = skipped ? ` · ข้ามแถวที่อ่านไม่ได้ ${skipped} แถว` : ''
+    const info = applyMerge(plants, plant, overwrite)
+    const notes = [
+      info.replaced ? `ทับของเดิม ${info.replaced} ${unit}` : '',
+      blank ? `ข้าม${unit}ที่ไม่มีตัวเลขในไฟล์ ${blank} ${unit}` : '',
+      skipped ? `ข้ามแถวที่อ่านไม่ได้ ${skipped} แถว` : '',
+    ].filter(Boolean)
+    const tail = notes.length ? ` · ${notes.join(' · ')}` : ''
     const how =
       info.action === 'merged'
         ? `รวมข้อมูล Plant ${plant.id}: เพิ่ม ${info.added} ${unit}ใหม่ (เดิม ${info.kept} ${unit} → รวม ${info.total} ${unit})`
         : `เพิ่ม Plant ${plant.id} แล้ว: ${info.total} ${unit}`
-    shell.toast(`${how} (${info.from} ถึง ${info.to})${skip}`)
+    shell.toast(`${how} (${info.from} ถึง ${info.to})${tail}`)
   }
   rememberPlants()
   const p = ok[ok.length - 1].plant

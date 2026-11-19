@@ -19,6 +19,7 @@ export interface ParsedReport {
   daily: DailyRow[]
   months: number // month rows read
   skipped: number // rows that looked like data but had no usable month
+  blank: number // month rows whose every data cell was empty — a month the report lists but has no figures for
 }
 
 type Field = 'produced' | 'consumed' | 'exported' | 'imported' | 'peak'
@@ -37,10 +38,19 @@ const FIELD_MATCHERS: Array<[Field, (h: string) => boolean]> = [
 const PERIOD_RE = /^\s*(\d{4})[-/](\d{1,2})\s*$/ // "2022-10" or "2022/10"
 const isPeriodHeader = (h: string): boolean => /statistical\s*period|period|month|เดือน|date|วันที่/i.test(h)
 
-/** First non-empty, finite number parsed from a cell, else 0 (blank/"-"/text → 0). */
-function num(cell: string | undefined): number {
-  const v = Number((cell ?? '').replace(/,/g, '').trim())
-  return Number.isFinite(v) ? v : 0
+/**
+ * A cell as a number, or null when it holds no number at all.
+ *
+ * The distinction matters: `Number('')` is 0, so an EMPTY cell used to be stored as a measured zero.
+ * A report can list a month it has no figures for (the commissioning month, typically) and that month
+ * would then arrive as "produced 0 kWh" — a month the dashboard flags as a total failure, and the
+ * first day of data the whole plant's age is counted from. null lets the caller tell the two apart.
+ */
+function num(cell: string | undefined): number | null {
+  const text = (cell ?? '').replace(/,/g, '').trim()
+  if (!text) return null
+  const v = Number(text)
+  return Number.isFinite(v) ? v : null
 }
 
 /** Energy fields only (not Peak Power, which is kW); these get a unit factor, peak keeps its raw value. */
@@ -122,6 +132,7 @@ export function parsePlantReport(grid: string[][], fileName: string): ParsedRepo
 
   const daily: DailyRow[] = []
   let skipped = 0
+  let blank = 0
   for (let i = headerRow + 1; i < grid.length; i++) {
     const row = grid[i]
     const m = PERIOD_RE.exec(row[periodCol] ?? '')
@@ -136,20 +147,38 @@ export function parsePlantReport(grid: string[][], fileName: string): ParsedRepo
       skipped++
       continue
     }
-    const get = (f: Field): number => (col.has(f) ? num(row[col.get(f)!]) * (factor.get(f) ?? 1) : 0)
+    const get = (f: Field): number | null => {
+      const v = col.has(f) ? num(row[col.get(f)!]) : null
+      return v === null ? null : v * (factor.get(f) ?? 1)
+    }
+    const read = { produced: get('produced'), consumed: get('consumed'), exported: get('exported'), imported: get('imported'), peak: get('peak') }
+    // a month the report lists but has no figures for is NOT a month of zero output: leave it out
+    // entirely, so it neither drags the averages down nor becomes the plant's first day of data
+    if (Object.values(read).every((v) => v === null)) {
+      blank++
+      continue
+    }
     daily.push({
       date: `${year}-${String(month).padStart(2, '0')}-01`,
-      produced: get('produced'),
-      consumed: get('consumed'),
-      exported: get('exported'),
-      imported: get('imported'),
-      peakKw: get('peak'),
+      produced: read.produced ?? 0,
+      consumed: read.consumed ?? 0,
+      exported: read.exported ?? 0,
+      imported: read.imported ?? 0,
+      peakKw: read.peak ?? 0,
       samples: daysInMonth(year, month), // days the month covers (monthly data has no raw intervals)
     })
   }
-  if (!daily.length) throw new CsvError('ไม่พบข้อมูลรายเดือนในรายงาน (คอลัมน์ Statistical Period ต้องเป็น YYYY-MM)')
+  if (!daily.length) {
+    // tell the two empty outcomes apart: a report whose months are all blank is a different problem
+    // from one whose period column the parser could not read
+    throw new CsvError(
+      blank
+        ? `รายงานมี ${blank} เดือน แต่ทุกเดือนยังไม่มีตัวเลข`
+        : 'ไม่พบข้อมูลรายเดือนในรายงาน (คอลัมน์ Statistical Period ต้องเป็น YYYY-MM)',
+    )
+  }
 
   daily.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
   const name = plantNameFromReport(fileName)
-  return { id: name, name, daily, months: daily.length, skipped }
+  return { id: name, name, daily, months: daily.length, skipped, blank }
 }

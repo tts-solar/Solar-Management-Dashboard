@@ -14,10 +14,11 @@ export interface ImportDialogOpts {
   initialFiles?: File[]
   /** Parse files into plants for preview (nothing is applied). */
   read(files: File[]): Promise<ImportResult>
-  /** How this parsed plant would combine with the data already loaded (added / replaced / merged). */
-  previewMerge(plant: Plant): MergeInfo
-  /** Apply the confirmed import. */
-  onConfirm(ok: Imported[]): void
+  /** How this parsed plant would combine with the data already loaded (added / replaced / merged).
+   *  `overwrite` mirrors the dialog's own checkbox, so the preview counts match what will happen. */
+  previewMerge(plant: Plant, overwrite: boolean): MergeInfo
+  /** Apply the confirmed import, with the overwrite choice the user made in the preview. */
+  onConfirm(ok: Imported[], overwrite: boolean): void
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -32,10 +33,10 @@ const supportedFiles = (list: FileList | null | undefined): File[] =>
 
 /** One-line summary of how a file's data lands on the dashboard, from its {@link MergeInfo}. */
 function impact(info: MergeInfo, unit: string): string {
-  if (info.action === 'merged') {
-    return `รวมกับข้อมูลเดิม — เพิ่ม ${info.added} ${unit}ใหม่ (เดิม ${info.kept} ${unit} → รวม ${info.total} ${unit})`
-  }
-  return `Plant ใหม่ — ${info.total} ${unit}`
+  if (info.action !== 'merged') return `Plant ใหม่ — ${info.total} ${unit}`
+  const what = [`เพิ่ม ${info.added} ${unit}ใหม่`]
+  if (info.replaced) what.push(`ทับของเดิม ${info.replaced} ${unit}`)
+  return `รวมกับข้อมูลเดิม — ${what.join(' · ')} (เดิม ${info.kept} ${unit} → รวม ${info.total} ${unit})`
 }
 
 export function openImportDialog(o: ImportDialogOpts): void {
@@ -60,6 +61,16 @@ export function openImportDialog(o: ImportDialogOpts): void {
   const status = el('p', 'imp-status', 'ยังไม่ได้เลือกไฟล์')
   preview.append(status)
 
+  // Shown only when a file carries dates the dashboard already has. Hidden the rest of the time so
+  // the common case (fresh months) stays a two-step flow.
+  const dupe = el('label', 'imp-overwrite')
+  const dupeBox = el('input')
+  dupeBox.type = 'checkbox'
+  dupe.append(dupeBox, el('span', 'imp-overwrite-label', 'ทับข้อมูลเดิมที่ซ้ำกันด้วยไฟล์ใหม่'))
+  const dupeHint = el('span', 'imp-overwrite-hint', '')
+  dupe.append(dupeHint)
+  dupe.hidden = true
+
   const actions = el('div', 'confirm-actions')
   const cancel = el('button', 'c-btn ghost', 'ยกเลิก')
   cancel.type = 'button'
@@ -78,27 +89,30 @@ export function openImportDialog(o: ImportDialogOpts): void {
   tplDay.addEventListener('click', () => downloadDailyTemplate())
   tools.append(tplMonth, tplDay)
 
-  dlg.append(head, pick, input, tools, preview, actions)
+  dlg.append(head, pick, input, tools, preview, dupe, actions)
   document.body.append(dlg)
 
   let confirmed: Imported[] = []
+  let errors: string[] = []
+  // the checkbox changes every count in the preview, so the rows are drawn from stored parse
+  // results rather than straight off the read — ticking it redraws, it does not re-read the files
+  let overwrite = false
 
   function close(): void {
     if (dlg.open) dlg.close()
     dlg.remove()
   }
 
-  async function process(files: File[]): Promise<void> {
-    confirmed = []
-    ok.disabled = true
-    preview.replaceChildren(el('p', 'imp-status', `กำลังอ่าน ${files.length} ไฟล์…`))
-    const { ok: imported, errors } = await o.read(files)
-    confirmed = imported
+  function render(): void {
     preview.replaceChildren()
+    let overlapping = 0
 
-    for (const im of imported) {
+    for (const im of confirmed) {
       const unit = im.granularity === 'month' ? 'เดือน' : 'วัน'
-      const info = o.previewMerge(im.plant)
+      const info = o.previewMerge(im.plant, overwrite)
+      // dates the file carries that the dashboard already has — `added` counts only the new ones,
+      // in either mode, so the difference is the overlap whether or not the box is ticked
+      overlapping += im.plant.daily.length - info.added
       const row = el('div', 'imp-row')
       row.append(el('span', 'imp-plant', `Plant ${im.plant.id}`))
       const meta = el('div', 'imp-meta')
@@ -106,16 +120,38 @@ export function openImportDialog(o: ImportDialogOpts): void {
         el('span', '', `${info.from || '—'} ถึง ${info.to || '—'} · ${im.days} ${unit}ในไฟล์`),
         el('span', 'imp-change', impact(info, unit)),
       )
+      if (im.blank) meta.append(el('span', 'imp-note', `ข้าม${unit}ที่ไม่มีตัวเลขในไฟล์ ${im.blank} ${unit}`))
       if (im.skipped) meta.append(el('span', 'imp-skip', `ข้ามแถวที่อ่านไม่ได้ ${im.skipped} แถว`))
       row.append(meta)
       preview.append(row)
     }
     for (const e of errors) preview.append(el('div', 'imp-row error', e))
+    if (!confirmed.length && !errors.length) preview.append(el('p', 'imp-status', 'ไม่พบไฟล์ CSV หรือ Excel (.xlsx)'))
 
-    if (!imported.length && !errors.length) preview.append(el('p', 'imp-status', 'ไม่พบไฟล์ CSV หรือ Excel (.xlsx)'))
+    dupe.hidden = overlapping === 0
+    dupeHint.textContent = overlapping
+      ? `ไฟล์มีข้อมูลซ้ำกับของเดิม ${overlapping} รายการ · ถ้าไม่ติ๊ก ระบบจะเก็บของเดิมไว้`
+      : ''
     ok.disabled = confirmed.length === 0
+  }
+
+  async function process(files: File[]): Promise<void> {
+    confirmed = []
+    errors = []
+    ok.disabled = true
+    dupe.hidden = true
+    preview.replaceChildren(el('p', 'imp-status', `กำลังอ่าน ${files.length} ไฟล์…`))
+    const read = await o.read(files)
+    confirmed = read.ok
+    errors = read.errors
+    render()
     if (confirmed.length) ok.focus()
   }
+
+  dupeBox.addEventListener('change', () => {
+    overwrite = dupeBox.checked
+    render()
+  })
 
   pick.addEventListener('click', () => input.click())
   input.addEventListener('change', () => {
@@ -126,8 +162,9 @@ export function openImportDialog(o: ImportDialogOpts): void {
   cancel.addEventListener('click', close)
   ok.addEventListener('click', () => {
     const toApply = confirmed
+    const replace = overwrite
     close()
-    if (toApply.length) o.onConfirm(toApply)
+    if (toApply.length) o.onConfirm(toApply, replace)
   })
   dlg.addEventListener('cancel', (e) => {
     e.preventDefault() // Esc → cancel, we clean up ourselves

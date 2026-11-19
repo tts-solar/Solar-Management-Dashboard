@@ -95,15 +95,25 @@ export function readEmbedded(doc: Document): Snapshot | null {
 const byDate = (a: DailyRow, b: DailyRow): number => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)
 
 /**
- * Union two day-lists by date, keeping the EXISTING row on a clash and appending only new dates,
- * result sorted. A re-import of overlapping days never overwrites what is already on the dashboard —
- * only genuinely new dates are added (user rule: "keep existing, add new days only").
+ * Union two day-lists by date, result sorted.
+ *
+ * The default keeps the EXISTING row on a clash and appends only new dates (user rule: "keep
+ * existing, add new days only") — a re-import can never quietly rewrite what is on the dashboard.
+ * `overwrite` is the other half of that rule: when the source re-issues a corrected file, the user
+ * ticks the box in the import preview and the incoming row wins instead. Without it a correction is
+ * a silent no-op, which looks exactly like a successful import.
  */
-function mergeDaily(existing: DailyRow[], incoming: DailyRow[]): DailyRow[] {
+function mergeDaily(existing: DailyRow[], incoming: DailyRow[], overwrite: boolean): DailyRow[] {
   const map = new Map<string, DailyRow>()
-  for (const r of existing) map.set(r.date, r) // existing wins
-  for (const r of incoming) if (!map.has(r.date)) map.set(r.date, r) // only dates not already present
+  for (const r of existing) map.set(r.date, r)
+  for (const r of incoming) if (overwrite || !map.has(r.date)) map.set(r.date, r)
   return [...map.values()].sort(byDate)
+}
+
+/** Dates `incoming` and `existing` both carry — the rows a re-import would land on. */
+const overlapCount = (existing: DailyRow[], incoming: DailyRow[]): number => {
+  const have = new Set(existing.map((r) => r.date))
+  return incoming.reduce((n, r) => n + (have.has(r.date) ? 1 : 0), 0)
 }
 
 /** What importing `incoming` would do to the plant list — for the preview before the user confirms. */
@@ -111,7 +121,8 @@ export interface MergeInfo {
   action: 'added' | 'merged'
   incomingDays: number // days in the file being imported
   added: number // new dates that would be added
-  kept: number // existing dates kept unchanged (0 when added)
+  replaced: number // existing dates the file would overwrite (0 unless `overwrite`)
+  kept: number // existing dates left untouched
   total: number // resulting day count
   from: string // resulting date range start
   to: string // resulting date range end
@@ -122,25 +133,28 @@ export interface MergeInfo {
  *  - no existing plant with that id → `added` (the whole file).
  *  - otherwise → `merged`: keep every existing day, append only the file's new dates.
  */
-export function mergeInfo(existing: Plant | undefined, incoming: Plant): MergeInfo {
+export function mergeInfo(existing: Plant | undefined, incoming: Plant, overwrite = false): MergeInfo {
   if (!existing) {
     const d = incoming.daily
     return {
       action: 'added',
       incomingDays: d.length,
       added: d.length,
+      replaced: 0,
       kept: 0,
       total: d.length,
       from: d[0]?.date ?? '',
       to: d[d.length - 1]?.date ?? '',
     }
   }
-  const merged = mergeDaily(existing.daily, incoming.daily)
+  const merged = mergeDaily(existing.daily, incoming.daily, overwrite)
+  const overlap = overlapCount(existing.daily, incoming.daily)
   return {
     action: 'merged',
     incomingDays: incoming.daily.length,
     added: merged.length - existing.daily.length,
-    kept: existing.daily.length,
+    replaced: overwrite ? overlap : 0,
+    kept: existing.daily.length - (overwrite ? overlap : 0),
     total: merged.length,
     from: merged[0]?.date ?? '',
     to: merged[merged.length - 1]?.date ?? '',
@@ -148,19 +162,20 @@ export function mergeInfo(existing: Plant | undefined, incoming: Plant): MergeIn
 }
 
 /**
- * Apply an import: add a new plant, or merge days into an existing one (keeping existing days,
- * appending only new dates). Returns the same {@link MergeInfo} describing what happened. A merge
- * keeps the existing plant's id + name and adopts the new file's source name.
+ * Apply an import: add a new plant, or merge days into an existing one (by default keeping existing
+ * days and appending only new dates; `overwrite` lets the file's rows win on a clash). Returns the
+ * same {@link MergeInfo} describing what happened. A merge keeps the existing plant's id + name and
+ * adopts the new file's source name.
  */
-export function applyMerge(list: Plant[], incoming: Plant): MergeInfo {
+export function applyMerge(list: Plant[], incoming: Plant, overwrite = false): MergeInfo {
   const i = list.findIndex((p) => p.id === incoming.id)
   const existing = i >= 0 ? list[i] : undefined
-  const info = mergeInfo(existing, incoming)
+  const info = mergeInfo(existing, incoming, overwrite)
   if (!existing) {
     list.push(incoming)
     list.sort((a, b) => a.id.localeCompare(b.id))
   } else {
-    const merged: Plant = { ...existing, daily: mergeDaily(existing.daily, incoming.daily), source: incoming.source }
+    const merged: Plant = { ...existing, daily: mergeDaily(existing.daily, incoming.daily, overwrite), source: incoming.source }
     if (incoming.profile) merged.profile = incoming.profile // adopt the freshest day shape
     list[i] = merged
   }

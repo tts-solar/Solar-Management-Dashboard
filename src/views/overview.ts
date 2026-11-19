@@ -82,8 +82,17 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string, rang
       ? [...new Set(rows.flatMap((x) => scoped(x.plant).map((d) => d.date)))].sort()
       : [...new Set(rows.flatMap((x) => monthsOf(scoped(x.plant))))].sort()
     : [...new Set(rows.flatMap((x) => monthsOf(x.plant.daily, year)))].sort()
-  const bucketLabel = (k: string): string =>
-    dayBuckets ? `${+k.slice(8, 10)}/${+k.slice(5, 7)}` : MONTHS[+k.slice(5) - 1]
+  // A ช่วงวัน (date-range) filter can span a year boundary, and then a bucket named by month or by
+  // day/month alone REPEATS: "Sep … Dec … Sep" across 2024-09→2026-09 gives the reader no way to tell
+  // the two Septembers apart. So a range carries a two-digit year on every bucket. The ปี/เดือน filter
+  // does not: it names its year in the page title and every bucket of it shares that year, so the
+  // suffix would be noise on each of the twelve.
+  const bucketLabel = (k: string): string => {
+    const yy = range ? k.slice(2, 4) : ''
+    return dayBuckets
+      ? `${+k.slice(8, 10)}/${+k.slice(5, 7)}${yy ? `/${yy}` : ''}` // 29/9/24
+      : `${MONTHS[+k.slice(5) - 1]}${yy}` // Dec24
+  }
   const perMonth = bucketKeys.map((key) => {
     let produced = 0
     let consumed = 0
@@ -141,7 +150,11 @@ export function renderOverview(el: HTMLElement, ctx: ViewCtx, year: string, rang
       animation: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
-        y: { beginAtZero: true, title: axisTitle(`Production (${scale.unit})`), grid: { display: false } },
+        // "Accumulate": these three lines are running totals, and the axis is the only place a reader
+        // who never hovers a point can learn that. Without it a December four times January's height
+        // reads as a December that produced four times as much. The plant page's chart is NOT
+        // cumulative, so its axis keeps the plain "Production" — the two must not be labelled alike.
+        y: { beginAtZero: true, title: axisTitle(`Accumulate Production (${scale.unit})`), grid: { display: false } },
         x: { grid: { display: false } },
       },
       plugins: {

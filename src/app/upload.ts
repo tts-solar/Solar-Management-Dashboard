@@ -10,6 +10,8 @@ export interface Imported {
   plant: Plant
   days: number
   skipped: number
+  /** Month rows the report lists with no figures at all — left out rather than imported as zeros. */
+  blank: number
   /** 'month' for monthly Plant Reports (each row is a month), 'day' for interval CSV. Drives wording. */
   granularity: 'day' | 'month'
 }
@@ -48,6 +50,7 @@ function monthlyFromGrid(grid: string[][], fileName: string): Imported {
     plant: { id: r.id, name: r.name, daily: r.daily, source: fileName },
     days: r.months,
     skipped: r.skipped,
+    blank: r.blank,
     granularity: 'month',
   }
 }
@@ -75,6 +78,7 @@ function readCsvFile(file: File, buf: ArrayBuffer): Imported {
         plant: { id, name: id, daily: parsed.daily, source: file.name, profile: parsed.profile },
         days: parsed.daily.length,
         skipped: parsed.skipped,
+        blank: 0, // an interval export has no "month with no figures" row to leave out
         granularity: 'day',
       }
     } catch (e) {

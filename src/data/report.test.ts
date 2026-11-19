@@ -170,3 +170,47 @@ describe('readXlsxGrid end-to-end', () => {
     expect(r.daily.every((d) => Number.isFinite(d.produced))).toBe(true)
   })
 })
+
+// A month the report lists but has no figures for — exactly how the real SC Tower 2022 export writes
+// its commissioning month: the period cell is filled, every other cell is empty.
+const blankRow = (period: string): string[] => [period, ...HEADER.slice(1).map(() => '')]
+/** Only the named column carries a value; everything else in the row is empty. */
+const sparseRow = (period: string, col: number, value: string): string[] =>
+  HEADER.map((_, i) => (i === 0 ? period : i === col ? value : ''))
+
+describe('parsePlantReport — a month with no figures is not a month of zero output', () => {
+  it('leaves a blank month out and counts it separately from unreadable rows', () => {
+    const r = parsePlantReport([...grid().slice(0, 2), blankRow('2022-09'), ...grid().slice(2)], 'SC Tower 2022.xlsx')
+    expect(r.blank).toBe(1)
+    expect(r.skipped).toBe(0)
+    expect(r.months).toBe(3)
+    // the blank month must not become the plant's first day of data — that is what dates its age
+    expect(r.daily.map((d) => d.date)).toEqual(['2022-10-01', '2022-11-01', '2022-12-01'])
+  })
+
+  it('keeps a month that genuinely reported zero', () => {
+    const r = parsePlantReport([...grid().slice(0, 2), sparseRow('2022-09', 6, '0')], 'SC Tower 2022.xlsx')
+    expect(r.blank).toBe(0)
+    expect(r.months).toBe(1)
+    expect(r.daily[0].produced).toBe(0)
+  })
+
+  it('keeps a month where only one of the other columns has a figure', () => {
+    const r = parsePlantReport([...grid().slice(0, 2), sparseRow('2022-09', 13, '5000')], 'SC Tower 2022.xlsx')
+    expect(r.months).toBe(1)
+    expect(r.daily[0]).toMatchObject({ produced: 0, consumed: 5000 })
+  })
+
+  it('says so when every month in the report is blank', () => {
+    const rows = [...grid().slice(0, 2), blankRow('2022-09'), blankRow('2022-10')]
+    expect(() => parsePlantReport(rows, 'SC Tower 2022.xlsx')).toThrow(CsvError)
+    expect(() => parsePlantReport(rows, 'SC Tower 2022.xlsx')).toThrow('2 เดือน')
+  })
+
+  it('still reports a row with numbers but no readable month as skipped, not blank', () => {
+    const junk = HEADER.map((_, i) => (i === 0 ? 'ยอดรวม' : '123'))
+    const r = parsePlantReport([...grid(), junk], 'SC Tower 2022.xlsx')
+    expect(r.skipped).toBe(1)
+    expect(r.blank).toBe(0)
+  })
+})

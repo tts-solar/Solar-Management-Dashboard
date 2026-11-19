@@ -1965,6 +1965,36 @@ dialog.import-dlg::backdrop {
 .imp-skip {
   color: var(--bad);
 }
+/* a month the report lists with no figures: worth telling the user about, but nothing is wrong */
+.imp-note {
+  color: var(--green);
+}
+/* the "overwrite the dates I already have" choice; hidden unless a file actually overlaps */
+.imp-overwrite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.imp-overwrite input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--green);
+  cursor: pointer;
+}
+.imp-overwrite-hint {
+  flex: 1 1 100%;
+  color: var(--gray);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
 .imp-row.error {
   display: block;
   border-left-color: var(--bad);

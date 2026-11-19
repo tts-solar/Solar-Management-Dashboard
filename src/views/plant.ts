@@ -38,15 +38,22 @@ export function renderPlant(
   const r = resolve(plant, settingsFor(ctx.settings, plant.id))
   // rows one-per-day for a month or a short range (≤62d); one-per-month for a year or a long range
   const perDay = range ? rangeIsDaily(range.start, range.end) : !!month
+  // A ช่วงวัน (date-range) filter can span a year boundary, and then an axis tick — and the Data table
+  // row beside it, which reuses the same `axis` text — REPEATS: two Septembers from different years
+  // read as one. So a range puts a two-digit year on every tick. The year/month filter does not: its
+  // year is in the page title and shared by every row, so the suffix would be noise on each one.
+  // `label` (tooltip, scatter, and the table in day mode) already carries a full year either way.
   const rows: Row[] = perDay
     ? daily.map((d) => {
         const [y, mo, day] = d.date.split('-')
-        return { key: d.date, axis: `${MONTHS[+mo - 1]} ${+day}`, label: `${day}/${mo}/${y}`, m: withMetrics(d, r) }
+        const axis = `${MONTHS[+mo - 1]} ${+day}${range ? ` '${y.slice(2)}` : ''}` // Sep 29 '24
+        return { key: d.date, axis, label: `${day}/${mo}/${y}`, m: withMetrics(d, r) }
       })
     : toMonthly(daily).map((p) => {
         const name = MONTHS[+p.key.slice(5) - 1]
         const yr = p.key.slice(0, 4)
-        return { key: p.key, axis: name, label: `${name} ${yr}`, m: withMetrics(p, r, inPeriod(daily, p.key), !range) }
+        const axis = range ? `${name}${yr.slice(2)}` : name // Dec24
+        return { key: p.key, axis, label: `${name} ${yr}`, m: withMetrics(p, r, inPeriod(daily, p.key), !range) }
       })
   // year/month views use the calendar-day plan basis; a custom range counts only its selected days
   const total = withMetrics(sumRows(daily), r, daily, !range)
